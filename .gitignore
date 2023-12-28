@@ -22,3 +22,6 @@
 
 # Env files
 .env
+
+# Database
+broker.db

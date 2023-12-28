@@ -15,6 +15,9 @@ func NewDB() (*gorm.DB, error) {
 		return nil, err
 	}
 
+	db.AutoMigrate(&Message{})
+	db.AutoMigrate(&MessageConsumedRecord{})
+
 	return db, nil
 }
 
