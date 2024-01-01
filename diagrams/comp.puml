@@ -1,0 +1,27 @@
+@startuml
+
+node "Message Broker Node" {
+  component "Consensus Service" as CSS
+  component "Topic Service" as TS
+  component "Topic Storage" as TR
+
+  component "Consumer Server" as CS
+  component "Producer Server" as PS
+  component "Node Server" as NS
+}
+
+actor/ "Producers" as P
+actor "Consumers" as C
+node "Other Nodes" as N
+
+TR -> TS
+TS -> CSS
+TS --> CS
+TS --> PS
+CSS --> NS
+
+CS --> C
+PS --> P
+NS --> N
+
+@enduml

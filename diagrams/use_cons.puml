@@ -1,0 +1,22 @@
+@startuml
+left to right direction
+
+actor "Consumer" as C
+
+rectangle "Message Broker" {
+  usecase "Authenticate" as A
+  usecase "Connect" as CO
+  usecase "Create topic" as CT
+  usecase "Subscribe to topic" as ST
+  usecase "Consume messages" as CS
+  usecase "Unsubscribe from topic" as UT
+}
+
+C --> CO
+C --> ST
+C --> UT
+
+CO ..> A : <<include>>
+ST <.. CT : <<extend>>
+ST <.. CS : <<extend>>
+@enduml

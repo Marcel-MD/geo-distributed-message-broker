@@ -1,0 +1,35 @@
+@startuml
+
+actor/ "Producer 1" as P1
+actor/ "Producer 2" as P2
+actor/ "Producer 3" as P3
+
+actor "Consumer 1" as C1
+actor "Consumer 2" as C2
+actor "Consumer 3" as C3
+
+
+cloud us-central {
+  node "Node 1" as N1
+}
+cloud europe-west {
+  node "Node 2" as N2
+}
+cloud asia-south {
+  node "Node 3" as N3
+}
+
+N1 = N2
+N2 == N3
+N3 == N1
+
+N1 <-- P1
+N1 <-- C1
+
+N2 <-- P2
+N2 <-- C2
+
+P3 -up-> N3
+C3 -up-> N3
+
+@enduml

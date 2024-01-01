@@ -1,0 +1,14 @@
+@startuml
+left to right direction
+
+actor "Developer" as D
+
+usecase "Read documentation" as RD
+usecase "Configure message broker" as CM
+usecase "Deploy using Docker image" as DD
+
+D --> RD
+D --> CM
+D --> DD
+
+@enduml

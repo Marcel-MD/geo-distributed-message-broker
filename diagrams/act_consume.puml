@@ -1,0 +1,14 @@
+@startuml
+
+start
+:connect to message broker;
+:subscribe to topic;
+if (topic exists?) then (yes)
+  :fetch unread messages;
+else (no)
+  :create new topic;
+endif
+:consume messages;
+stop
+
+@enduml

@@ -1,0 +1,22 @@
+@startuml
+
+actor Producer as P
+box "Message Broker"
+participant "Node 1" as N1
+participant "Node 2" as N2
+participant "Node 3" as N3
+end box
+actor Consumer as C
+
+P -> N1 : Publish message
+N1 -> N2 : Propose message
+N1 -> N3 : Propose message
+N1 <-- N2 : Accept message
+N1 <-- N3 : Accept message
+N1 -> N1 : Commit message
+N1 -> N2 : Commit message
+N1 -> N3 : Commit message
+N3 -> C : Consume message
+N3 <-- C : Acknowledge message
+
+@enduml

@@ -1,0 +1,18 @@
+@startuml
+left to right direction
+
+actor "Producer" as P
+
+rectangle "Message Broker" {
+  usecase "Authenticate" as A
+  usecase "Connect" as C
+  usecase "Create topic" as CT
+  usecase "Publish message to topic" as PT
+}
+
+P --> C
+P --> PT
+
+C ..> A : <<include>>
+PT <.. CT : <<extend>>
+@enduml
