@@ -9,8 +9,8 @@ import (
 
 type Broker interface {
 	Publish(msg data.Message) (uint64, error)
-	Subscribe(consumerName string, topic string) (<-chan data.Message, error)
-	Unsubscribe(consumerName string, topic string)
+	Subscribe(consumerName string, topics []string) (<-chan data.Message, error)
+	Unsubscribe(consumerName string, topics []string)
 	Acknowledge(consumerName string, msg data.Message) error
 }
 
@@ -71,49 +71,57 @@ func (b *broker) Publish(msg data.Message) (uint64, error) {
 	return msg.ID, nil
 }
 
-func (b *broker) Subscribe(consumerName string, topic string) (<-chan data.Message, error) {
-	slog.Debug("Subscribing to topic", "consumer", consumerName, "topic", topic)
+func (b *broker) Subscribe(consumerName string, topics []string) (<-chan data.Message, error) {
+	slog.Debug("Subscribing to topic", "consumer", consumerName, "topics", topics)
 
-	// Create topic if it does not exist
-	if _, ok := b.topics[topic]; !ok {
-		if err := b.createTopic(topic); err != nil {
-			return nil, err
+	for _, topic := range topics {
+		// Create topic if it does not exist
+		if _, ok := b.topics[topic]; !ok {
+			if err := b.createTopic(topic); err != nil {
+				return nil, err
+			}
 		}
-	}
 
-	// If consumer already subscribed to topic, return error
-	if _, ok := b.topics[topic][consumerName]; ok {
-		return nil, fmt.Errorf("consumer with name %s already exists for topic %s", consumerName, topic)
-	}
-
-	// Get all messages published after last consumed message
-	messages, err := b.repo.GetMessages(consumerName, topic)
-	if err != nil {
-		return nil, err
+		// If consumer already subscribed to topic, return error
+		if _, ok := b.topics[topic][consumerName]; ok {
+			return nil, fmt.Errorf("consumer with name %s already exists for topics %v", consumerName, topics)
+		}
 	}
 
 	// Create consumer
 	consumer := make(chan data.Message, 10)
-	b.topics[topic][consumerName] = consumer
-	go func() {
-		for _, msg := range messages {
-			consumer <- msg
+
+	for _, topic := range topics {
+		// Get all messages published after last consumed message
+		messages, err := b.repo.GetMessages(consumerName, topic)
+		if err != nil {
+			return nil, err
 		}
-	}()
+
+		// Add consumer to topic
+		b.topics[topic][consumerName] = consumer
+		go func() {
+			for _, msg := range messages {
+				consumer <- msg
+			}
+		}()
+	}
 
 	return consumer, nil
 }
 
-func (b *broker) Unsubscribe(consumerName string, topic string) {
-	slog.Debug("Unsubscribing from topic", "consumer", consumerName, "topic", topic)
+func (b *broker) Unsubscribe(consumerName string, topics []string) {
+	slog.Debug("Unsubscribing from topic", "consumer", consumerName, "topics", topics)
 
-	if _, ok := b.topics[topic]; ok {
-		delete(b.topics[topic], consumerName)
+	for _, topic := range topics {
+		if _, ok := b.topics[topic]; ok {
+			delete(b.topics[topic], consumerName)
+		}
 	}
 }
 
 func (b *broker) Acknowledge(consumerName string, msg data.Message) error {
-	slog.Debug("Acknowledging message", "consumer", consumerName, "message", msg.ID)
+	slog.Debug("Acknowledging message", "consumer", consumerName, "topic", msg.Topic, "message", msg.ID)
 
 	record := data.MessageConsumedRecord{
 		MessageID:  msg.ID,
