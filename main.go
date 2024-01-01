@@ -9,6 +9,9 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
+
+	"github.com/lmittmann/tint"
 )
 
 func main() {
@@ -65,13 +68,15 @@ func main() {
 }
 
 func configureLogger(cfg config.Config) {
-	options := &slog.HandlerOptions{
-		Level: slog.LevelDebug,
-	}
+	var handler slog.Handler = tint.NewHandler(os.Stdout, &tint.Options{
+		Level:      slog.LevelDebug,
+		TimeFormat: time.RFC3339,
+	})
 
-	var handler slog.Handler = slog.NewTextHandler(os.Stdout, options)
 	if cfg.Env == "prod" {
-		handler = slog.NewJSONHandler(os.Stdout, options)
+		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
+			Level: slog.LevelDebug,
+		})
 	}
 
 	l := slog.New(handler)
