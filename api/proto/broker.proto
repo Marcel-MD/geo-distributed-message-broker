@@ -16,17 +16,17 @@ message PublishRequest {
 }
 
 message PublishResponse {
-    string id = 1;
+    uint64 id = 1;
     google.protobuf.Timestamp published_at = 2;
 }
 
 message SubscribeRequest {
     string topic = 1;
-    string name = 2;
+    string consumer_name = 2;
 }
 
 message MessageResponse {
-    string id = 1;
+    uint64 id = 1;
     bytes body = 2;
     string topic = 3;
     google.protobuf.Timestamp published_at = 4;

@@ -5,12 +5,15 @@ import (
 
 	"gorm.io/driver/sqlite"
 	"gorm.io/gorm"
+	"gorm.io/gorm/logger"
 )
 
 func NewDB() (*gorm.DB, error) {
-	slog.Info("Creating new database connection")
+	slog.Info("Creating new database connection 💾")
 
-	db, err := gorm.Open(sqlite.Open("broker.db"), &gorm.Config{})
+	db, err := gorm.Open(sqlite.Open("broker.db"), &gorm.Config{
+		Logger: logger.Default.LogMode(logger.Silent),
+	})
 	if err != nil {
 		return nil, err
 	}

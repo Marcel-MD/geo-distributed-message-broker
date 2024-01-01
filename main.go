@@ -19,6 +19,8 @@ func main() {
 		return
 	}
 
+	configureLogger(cfg)
+
 	// Database
 	db, err := data.NewDB()
 	if err != nil {
@@ -36,7 +38,7 @@ func main() {
 		return
 	}
 
-	slog.Info("Starting GRPC server")
+	slog.Info("Starting GRPC server 🚀")
 	go func() {
 		if err := grpcSrv.Serve(listener); err != nil {
 			slog.Error("Failed to start gRPC server", "error", err.Error())
@@ -48,7 +50,7 @@ func main() {
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGSEGV)
 	<-quit
-	slog.Warn("Shutting down server")
+	slog.Warn("Shutting down server ⛔")
 
 	// Shutdown GRPC server
 	grpcSrv.GracefulStop()
@@ -58,4 +60,20 @@ func main() {
 		slog.Error("Failed to close database connection", "error", err.Error())
 		return
 	}
+
+	slog.Info("Server successful shutdown ✅")
+}
+
+func configureLogger(cfg config.Config) {
+	options := &slog.HandlerOptions{
+		Level: slog.LevelDebug,
+	}
+
+	var handler slog.Handler = slog.NewTextHandler(os.Stdout, options)
+	if cfg.Env == "prod" {
+		handler = slog.NewJSONHandler(os.Stdout, options)
+	}
+
+	l := slog.New(handler)
+	slog.SetDefault(l)
 }
