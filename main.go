@@ -4,7 +4,7 @@ import (
 	"geo-distributed-message-broker/api"
 	"geo-distributed-message-broker/config"
 	"geo-distributed-message-broker/data"
-	"geo-distributed-message-broker/domain"
+	"geo-distributed-message-broker/services"
 	"log/slog"
 	"os"
 	"os/signal"
@@ -32,10 +32,10 @@ func main() {
 	}
 
 	repo := data.NewRepository(db)
-	broker := domain.NewBroker(repo)
+	broker := services.NewBrokerService(repo)
 
 	// GRPC Server
-	grpcSrv, listener, err := api.NewServer(cfg, broker)
+	brokerSrv, brokerListener, err := api.NewBrokerServer(cfg, broker)
 	if err != nil {
 		slog.Error("Failed to create GRPC server", "error", err.Error())
 		return
@@ -43,7 +43,7 @@ func main() {
 
 	slog.Info("Starting GRPC server 🚀")
 	go func() {
-		if err := grpcSrv.Serve(listener); err != nil {
+		if err := brokerSrv.Serve(brokerListener); err != nil {
 			slog.Error("Failed to start gRPC server", "error", err.Error())
 			return
 		}
@@ -56,7 +56,7 @@ func main() {
 	slog.Warn("Shutting down server ⛔")
 
 	// Shutdown GRPC server
-	grpcSrv.GracefulStop()
+	brokerSrv.GracefulStop()
 
 	// Close DB connection
 	if err := data.CloseDB(db); err != nil {

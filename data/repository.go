@@ -10,7 +10,6 @@ type Repository interface {
 	CreateMessage(message *Message) error
 	CreateConsumedRecord(record *MessageConsumedRecord) error
 	GetMessages(consumerName string, topicName string) ([]Message, error)
-	GetMessagesCount(topicName string) (uint64, error)
 }
 
 func NewRepository(db *gorm.DB) Repository {
@@ -39,19 +38,9 @@ func (r *repository) GetMessages(consumerName string, topicName string) ([]Messa
 	}
 
 	var messages []Message
-	if err := r.db.Where("topic = ? AND published_at > ?", topicName, lastConsumedRecord.ConsumedAt).Find(&messages).Error; err != nil {
+	if err := r.db.Where("topic = ? AND id > ?", topicName, lastConsumedRecord.MessageID).Find(&messages).Error; err != nil {
 		return nil, err
 	}
 
 	return messages, nil
-}
-
-func (r *repository) GetMessagesCount(topicName string) (uint64, error) {
-	var msg Message
-	err := r.db.Where("topic = ?", topicName).Last(&msg).Error
-	if err != nil && err != gorm.ErrRecordNotFound {
-		return 0, err
-	}
-
-	return msg.ID, nil
 }

@@ -2,7 +2,8 @@ up:
 	docker-compose up --build
 
 gen_proto:
-	protoc --proto_path=api/proto api/proto/broker.proto --go_out=api --go-grpc_out=api
+	protoc --proto_path=proto proto/broker.proto --go_out=. --go-grpc_out=.
+	protoc --proto_path=proto proto/node.proto --go_out=. --go-grpc_out=.
 
 image:
 	docker image tag geo-distributed-message-broker:latest marcelvlasenco/geo-distributed-message-broker:latest
