@@ -1,7 +1,27 @@
 services:
-  broker:
+  node1:
     build:
       context: .
       dockerfile: Dockerfile
+    env_file:
+      - node1.env
+    ports:
+      - 8070:8070
+
+  node2:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - node2.env
     ports:
       - 8080:8080
+
+  node3:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - node3.env
+    ports:
+      - 8090:8090

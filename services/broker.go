@@ -17,23 +17,23 @@ type BrokerService interface {
 func NewBrokerService(repo data.Repository) BrokerService {
 	slog.Info("Creating new broker 📬")
 
-	return &broker{
+	return &brokerService{
 		topics: map[string]map[string]chan data.Message{},
 		repo:   repo,
 	}
 }
 
-type broker struct {
+type brokerService struct {
 	topics map[string]map[string]chan data.Message // map[topic_name]map[consumer_name]chan data.Message
 	repo   data.Repository
 }
 
-func (b *broker) createTopic(topic string) {
+func (b *brokerService) createTopic(topic string) {
 	slog.Info("Creating new topic", "topic", topic)
 	b.topics[topic] = map[string]chan data.Message{}
 }
 
-func (b *broker) Publish(msg data.Message) (uint64, error) {
+func (b *brokerService) Publish(msg data.Message) (uint64, error) {
 	slog.Debug("Publishing message", "topic", msg.Topic)
 
 	// Create topic if it does not exist
@@ -56,7 +56,7 @@ func (b *broker) Publish(msg data.Message) (uint64, error) {
 	return msg.ID, nil
 }
 
-func (b *broker) Subscribe(consumerName string, topics []string) (<-chan data.Message, error) {
+func (b *brokerService) Subscribe(consumerName string, topics []string) (<-chan data.Message, error) {
 	slog.Debug("Subscribing to topic", "consumer", consumerName, "topics", topics)
 
 	for _, topic := range topics {
@@ -93,7 +93,7 @@ func (b *broker) Subscribe(consumerName string, topics []string) (<-chan data.Me
 	return consumer, nil
 }
 
-func (b *broker) Unsubscribe(consumerName string, topics []string) {
+func (b *brokerService) Unsubscribe(consumerName string, topics []string) {
 	slog.Debug("Unsubscribing from topic", "consumer", consumerName, "topics", topics)
 
 	for _, topic := range topics {
@@ -103,7 +103,7 @@ func (b *broker) Unsubscribe(consumerName string, topics []string) {
 	}
 }
 
-func (b *broker) Acknowledge(consumerName string, msg data.Message) error {
+func (b *brokerService) Acknowledge(consumerName string, msg data.Message) error {
 	slog.Debug("Acknowledging message", "consumer", consumerName, "topic", msg.Topic, "message", msg.ID)
 
 	record := data.MessageConsumedRecord{

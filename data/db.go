@@ -1,6 +1,7 @@
 package data
 
 import (
+	"geo-distributed-message-broker/config"
 	"log/slog"
 
 	"gorm.io/driver/sqlite"
@@ -8,10 +9,10 @@ import (
 	"gorm.io/gorm/logger"
 )
 
-func NewDB() (*gorm.DB, error) {
+func NewDB(cfg config.Config) (*gorm.DB, error) {
 	slog.Info("Creating new database connection 💾")
 
-	db, err := gorm.Open(sqlite.Open("broker.db"), &gorm.Config{
+	db, err := gorm.Open(sqlite.Open(cfg.Database), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Silent),
 	})
 	if err != nil {

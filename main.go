@@ -1,6 +1,7 @@
 package main
 
 import (
+	"fmt"
 	"geo-distributed-message-broker/api"
 	"geo-distributed-message-broker/config"
 	"geo-distributed-message-broker/data"
@@ -15,6 +16,9 @@ import (
 )
 
 func main() {
+	// Logger
+	configureLogger()
+
 	// Config
 	cfg, err := config.NewConfig()
 	if err != nil {
@@ -22,10 +26,8 @@ func main() {
 		return
 	}
 
-	configureLogger(cfg)
-
 	// Database
-	db, err := data.NewDB()
+	db, err := data.NewDB(cfg)
 	if err != nil {
 		slog.Error("Failed to create database connection", "error", err.Error())
 		return
@@ -34,17 +36,34 @@ func main() {
 	repo := data.NewRepository(db)
 	broker := services.NewBrokerService(repo)
 
-	// GRPC Server
+	// Broker Server
 	brokerSrv, brokerListener, err := api.NewBrokerServer(cfg, broker)
 	if err != nil {
-		slog.Error("Failed to create GRPC server", "error", err.Error())
+		slog.Error("Failed to create broker server", "error", err.Error())
 		return
 	}
 
-	slog.Info("Starting GRPC server 🚀")
+	slog.Info(fmt.Sprintf("Starting broker server on port %s 🚀", cfg.BrokerPort))
 	go func() {
 		if err := brokerSrv.Serve(brokerListener); err != nil {
-			slog.Error("Failed to start gRPC server", "error", err.Error())
+			slog.Error("Failed to start broker server", "error", err.Error())
+			return
+		}
+	}()
+
+	consensus := services.NewConsensusService(cfg)
+
+	// Node Server
+	nodeSrv, nodeListener, err := api.NewNodeServer(cfg, consensus)
+	if err != nil {
+		slog.Error("Failed to create node server", "error", err.Error())
+		return
+	}
+
+	slog.Info(fmt.Sprintf("Starting node server on port %s 🚀", cfg.NodePort))
+	go func() {
+		if err := nodeSrv.Serve(nodeListener); err != nil {
+			slog.Error("Failed to start node server", "error", err.Error())
 			return
 		}
 	}()
@@ -55,8 +74,11 @@ func main() {
 	<-quit
 	slog.Warn("Shutting down server ⛔")
 
-	// Shutdown GRPC server
+	// Shutdown broker server
 	brokerSrv.GracefulStop()
+
+	// Shutdown node server
+	nodeSrv.GracefulStop()
 
 	// Close DB connection
 	if err := data.CloseDB(db); err != nil {
@@ -67,17 +89,11 @@ func main() {
 	slog.Info("Server successful shutdown ✅")
 }
 
-func configureLogger(cfg config.Config) {
+func configureLogger() {
 	var handler slog.Handler = tint.NewHandler(os.Stdout, &tint.Options{
 		Level:      slog.LevelDebug,
 		TimeFormat: time.RFC3339,
 	})
-
-	if cfg.Env == "prod" {
-		handler = slog.NewJSONHandler(os.Stdout, &slog.HandlerOptions{
-			Level: slog.LevelDebug,
-		})
-	}
 
 	l := slog.New(handler)
 	slog.SetDefault(l)

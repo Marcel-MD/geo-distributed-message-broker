@@ -1,12 +1,8 @@
 # Start from golang base image
-FROM golang:alpine as builder
+FROM golang:1.21.5 as builder
 
 # Add Maintainer info
 LABEL maintainer="Marcel Vlasenco"
-
-# Install git.
-# Git is required for fetching the dependencies.
-RUN apk update && apk add --no-cache git
 
 # Set the current working directory inside the container 
 WORKDIR /app
@@ -21,16 +17,16 @@ RUN go mod download
 COPY . .
 
 # Build the Go app
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main .
+RUN CGO_ENABLED=1 GOOS=linux go build -o main -a -ldflags '-linkmode external -extldflags "-static"' .
 
 # Start a new stage from scratch
-FROM alpine:latest
+FROM alpine:3.19.0
 RUN apk --no-cache add ca-certificates
 
 WORKDIR /root/
 
-# Copy the Pre-built binary file from the previous stage. Observe we also copied the .env file
-COPY --from=builder /app/main /app/.env* ./
+# Copy the Pre-built binary file from the previous stage
+COPY --from=builder /app/main ./
 
-#Command to run the executable
+# Command to run the executable
 CMD ["./main"]

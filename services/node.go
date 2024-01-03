@@ -4,6 +4,7 @@ import (
 	"context"
 	"geo-distributed-message-broker/models"
 	"geo-distributed-message-broker/proto"
+	"log/slog"
 
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
@@ -16,6 +17,8 @@ type Node interface {
 }
 
 func NewNode(host string) (Node, error) {
+	slog.Info("Creating new node client 📡", "node", host)
+
 	conn, err := grpc.Dial(host, grpc.WithTransportCredentials(insecure.NewCredentials()))
 	if err != nil {
 		return nil, err
