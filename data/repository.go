@@ -32,13 +32,13 @@ func (r *repository) CreateConsumedRecord(record *MessageConsumedRecord) error {
 
 func (r *repository) GetMessages(consumerName string, topicName string) ([]Message, error) {
 	var lastConsumedRecord MessageConsumedRecord
-	err := r.db.Where("topic = ? AND consumed_by = ?", topicName, consumerName).Last(&lastConsumedRecord).Error
+	err := r.db.Where("topic = ? AND consumed_by = ?", topicName, consumerName).Order("timestamp DESC").First(&lastConsumedRecord).Error
 	if err != nil && err != gorm.ErrRecordNotFound {
 		return nil, err
 	}
 
 	var messages []Message
-	if err := r.db.Where("topic = ? AND id > ?", topicName, lastConsumedRecord.MessageID).Find(&messages).Error; err != nil {
+	if err := r.db.Where("topic = ? AND timestamp > ?", topicName, lastConsumedRecord.Timestamp).Find(&messages).Error; err != nil {
 		return nil, err
 	}
 

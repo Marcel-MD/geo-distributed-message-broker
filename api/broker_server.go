@@ -48,8 +48,7 @@ func (s *brokerServer) Publish(ctx context.Context, req *proto.PublishRequest) (
 	}
 
 	rsp := &proto.PublishResponse{
-		Id:    id,
-		Topic: req.Topic,
+		Id: id,
 	}
 
 	return rsp, nil

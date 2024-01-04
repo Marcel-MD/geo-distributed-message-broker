@@ -5,10 +5,12 @@ import (
 	"geo-distributed-message-broker/data"
 	"log/slog"
 	"time"
+
+	"github.com/google/uuid"
 )
 
 type BrokerService interface {
-	Publish(msg data.Message) (uint64, error)
+	Publish(msg data.Message) (string, error)
 	Subscribe(consumerName string, topics []string) (<-chan data.Message, error)
 	Unsubscribe(consumerName string, topics []string)
 	Acknowledge(consumerName string, msg data.Message) error
@@ -33,7 +35,7 @@ func (b *brokerService) createTopic(topic string) {
 	b.topics[topic] = map[string]chan data.Message{}
 }
 
-func (b *brokerService) Publish(msg data.Message) (uint64, error) {
+func (b *brokerService) Publish(msg data.Message) (string, error) {
 	slog.Debug("Publishing message", "topic", msg.Topic)
 
 	// Create topic if it does not exist
@@ -42,10 +44,11 @@ func (b *brokerService) Publish(msg data.Message) (uint64, error) {
 	}
 
 	// Save message to database
-	msg.ID = uint64(time.Now().UnixMicro())
+	msg.ID = uuid.NewString()
+	msg.Timestamp = time.Now().UnixMicro()
 	err := b.repo.CreateMessage(&msg)
 	if err != nil {
-		return 0, err
+		return "", err
 	}
 
 	// Send message to all consumers
@@ -108,8 +111,9 @@ func (b *brokerService) Acknowledge(consumerName string, msg data.Message) error
 
 	record := data.MessageConsumedRecord{
 		MessageID:  msg.ID,
-		Topic:      msg.Topic,
 		ConsumedBy: consumerName,
+		Timestamp:  msg.Timestamp,
+		Topic:      msg.Topic,
 	}
 
 	return b.repo.CreateConsumedRecord(&record)
