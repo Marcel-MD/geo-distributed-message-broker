@@ -2,7 +2,7 @@
 
 To run the message broker in it's default configuration:
 ```bash
-docker-compose up --build
+docker compose up --build
 ```
 
 Message broker nodes will be available on `localhost:8070`, `localhost:8080`, and `localhost:8090`.  
