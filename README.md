@@ -39,7 +39,9 @@ message MessageResponse {
 }
 ```
 
-### Thesis Topic
+## Thesis Project Proposal
+
+### Topic
 Cloud-native fault-tolerant message broker, part of toolchain for geo-distributed systems
 
 ### Subject
