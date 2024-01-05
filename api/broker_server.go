@@ -4,7 +4,7 @@ import (
 	"context"
 	"geo-distributed-message-broker/config"
 	"geo-distributed-message-broker/data"
-	"geo-distributed-message-broker/proto"
+	"geo-distributed-message-broker/pb"
 	"geo-distributed-message-broker/services"
 	"log/slog"
 	"net"
@@ -27,18 +27,18 @@ func NewBrokerServer(cfg config.Config, broker services.BrokerService, consensus
 
 	grpcSrv := grpc.NewServer()
 
-	proto.RegisterBrokerServer(grpcSrv, srv)
+	pb.RegisterBrokerServer(grpcSrv, srv)
 
 	return grpcSrv, listener, nil
 }
 
 type brokerServer struct {
-	proto.UnsafeBrokerServer
+	pb.UnsafeBrokerServer
 	broker    services.BrokerService
 	consensus services.ConsensusService
 }
 
-func (s *brokerServer) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
+func (s *brokerServer) Publish(ctx context.Context, req *pb.PublishRequest) (*pb.PublishResponse, error) {
 	msg := data.Message{
 		Topic: req.Topic,
 		Body:  req.Body,
@@ -49,14 +49,14 @@ func (s *brokerServer) Publish(ctx context.Context, req *proto.PublishRequest) (
 		return nil, err
 	}
 
-	rsp := &proto.PublishResponse{
+	rsp := &pb.PublishResponse{
 		Id: id,
 	}
 
 	return rsp, nil
 }
 
-func (s *brokerServer) Subscribe(req *proto.SubscribeRequest, srv proto.Broker_SubscribeServer) error {
+func (s *brokerServer) Subscribe(req *pb.SubscribeRequest, srv pb.Broker_SubscribeServer) error {
 	ch, err := s.broker.Subscribe(req.ConsumerName, req.Topics)
 	if err != nil {
 		slog.Error("Failed to subscribe", "error", err.Error())
@@ -66,7 +66,7 @@ func (s *brokerServer) Subscribe(req *proto.SubscribeRequest, srv proto.Broker_S
 	for {
 		select {
 		case msg := <-ch:
-			rsp := &proto.MessageResponse{
+			rsp := &pb.MessageResponse{
 				Id:        msg.ID,
 				Timestamp: msg.Timestamp,
 				Topic:     msg.Topic,

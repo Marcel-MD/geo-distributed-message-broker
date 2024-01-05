@@ -4,7 +4,7 @@ import (
 	"context"
 	"geo-distributed-message-broker/config"
 	"geo-distributed-message-broker/models"
-	"geo-distributed-message-broker/proto"
+	"geo-distributed-message-broker/pb"
 	"geo-distributed-message-broker/services"
 	"log/slog"
 	"net"
@@ -26,32 +26,32 @@ func NewNodeServer(cfg config.Config, consensus services.ConsensusService) (*grp
 
 	grpcSrv := grpc.NewServer()
 
-	proto.RegisterNodeServer(grpcSrv, srv)
+	pb.RegisterNodeServer(grpcSrv, srv)
 
 	return grpcSrv, listener, nil
 }
 
 type nodeServer struct {
-	proto.UnsafeNodeServer
+	pb.UnsafeNodeServer
 	consensus services.ConsensusService
 }
 
-func (s *nodeServer) Propose(ctx context.Context, req *proto.ProposeRequest) (*proto.ProposeResponse, error) {
+func (s *nodeServer) Propose(ctx context.Context, req *pb.ProposeRequest) (*pb.ProposeResponse, error) {
 	rsp, err := s.consensus.Propose(models.ToProposeRequest(req))
 	if err != nil {
 		return nil, err
 	}
 
-	return rsp.ToProto(), nil
+	return rsp.ToPb(), nil
 }
 
-func (s *nodeServer) Stable(ctx context.Context, req *proto.StableRequest) (*proto.StableResponse, error) {
+func (s *nodeServer) Stable(ctx context.Context, req *pb.StableRequest) (*pb.StableResponse, error) {
 	err := s.consensus.Stable(models.ToStableRequest(req))
 	if err != nil {
 		return nil, err
 	}
 
-	return &proto.StableResponse{
+	return &pb.StableResponse{
 		Ack: true,
 	}, nil
 }

@@ -1,7 +1,7 @@
 syntax = "proto3";
 
 package broker;
-option go_package = "/proto";
+option go_package = "/pb";
 
 service Broker {
     rpc Publish (PublishRequest) returns (PublishResponse);

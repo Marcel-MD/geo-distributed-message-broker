@@ -1,5 +1,44 @@
 # Geo Distributed Message Broker
 
+To run the message broker in it's default configuration:
+```bash
+docker-compose up --build
+```
+
+Message broker nodes will be available on `localhost:8070`, `localhost:8080`, and `localhost:8090`.  
+Interact with them using gRPC client of your choice:
+```proto
+syntax = "proto3";
+
+package broker;
+
+service Broker {
+    rpc Publish (PublishRequest) returns (PublishResponse);
+    rpc Subscribe(SubscribeRequest) returns (stream MessageResponse);
+}
+
+message PublishRequest {
+    string topic = 1;
+    bytes body = 2;
+}
+
+message PublishResponse {
+    string id = 1;
+}
+
+message SubscribeRequest {
+    repeated string topics = 1;
+    string consumer_name = 2;
+}
+
+message MessageResponse {
+    string id = 1;
+    int64 timestamp = 2;
+    string topic = 3;
+    bytes body = 4;
+}
+```
+
 ### Thesis Topic
 Cloud-native fault-tolerant message broker, part of toolchain for geo-distributed systems
 
