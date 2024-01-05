@@ -22,12 +22,12 @@ message ProposeRequest {
 message ProposeResponse {
     bool ack = 1;
     Message message = 2;
-    repeated Message predecessors = 3;
+    map<string,Message> predecessors = 3;
 }
 
 message StableRequest {
     Message message = 1;
-    repeated Message predecessors = 2;
+    map<string,Message> predecessors = 2;
 }
 
 message StableResponse {

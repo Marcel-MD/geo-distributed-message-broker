@@ -24,7 +24,7 @@ func ToProposeRequest(rsp *proto.ProposeRequest) ProposeRequest {
 type ProposeResponse struct {
 	Ack          bool
 	Message      data.Message
-	Predecessors []data.Message
+	Predecessors map[string]data.Message
 }
 
 func (r ProposeResponse) ToProto() *proto.ProposeResponse {
@@ -45,7 +45,7 @@ func ToProposeResponse(rsp *proto.ProposeResponse) ProposeResponse {
 
 type StableRequest struct {
 	Message      data.Message
-	Predecessors []data.Message
+	Predecessors map[string]data.Message
 }
 
 func (r StableRequest) ToProto() *proto.StableRequest {
@@ -64,17 +64,18 @@ func ToStableRequest(rsp *proto.StableRequest) StableRequest {
 
 func messageToProto(msg data.Message) *proto.Message {
 	return &proto.Message{
-		Id:    msg.ID,
-		Topic: msg.Topic,
-		Body:  msg.Body,
+		Id:        msg.ID,
+		Timestamp: msg.Timestamp,
+		Topic:     msg.Topic,
+		Body:      msg.Body,
 	}
 }
 
-func messagesToProto(msgs []data.Message) []*proto.Message {
-	var messages []*proto.Message
+func messagesToProto(msgs map[string]data.Message) map[string]*proto.Message {
+	messages := make(map[string]*proto.Message)
 
 	for _, msg := range msgs {
-		messages = append(messages, messageToProto(msg))
+		messages[msg.ID] = messageToProto(msg)
 	}
 
 	return messages
@@ -82,17 +83,18 @@ func messagesToProto(msgs []data.Message) []*proto.Message {
 
 func messageFromProto(msg *proto.Message) data.Message {
 	return data.Message{
-		ID:    msg.Id,
-		Topic: msg.Topic,
-		Body:  msg.Body,
+		ID:        msg.Id,
+		Timestamp: msg.Timestamp,
+		Topic:     msg.Topic,
+		Body:      msg.Body,
 	}
 }
 
-func messagesFromProto(msgs []*proto.Message) []data.Message {
-	var messages []data.Message
+func messagesFromProto(msgs map[string]*proto.Message) map[string]data.Message {
+	messages := make(map[string]data.Message)
 
 	for _, msg := range msgs {
-		messages = append(messages, messageFromProto(msg))
+		messages[msg.Id] = messageFromProto(msg)
 	}
 
 	return messages

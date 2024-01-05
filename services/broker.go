@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"geo-distributed-message-broker/data"
 	"log/slog"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -27,34 +28,41 @@ func NewBrokerService(repo data.Repository) BrokerService {
 
 type brokerService struct {
 	topics map[string]map[string]chan data.Message // map[topic_name]map[consumer_name]chan data.Message
+	mu     sync.RWMutex                            // protects topics
 	repo   data.Repository
 }
 
-func (b *brokerService) createTopic(topic string) {
-	slog.Info("Creating new topic", "topic", topic)
-	b.topics[topic] = map[string]chan data.Message{}
-}
-
 func (b *brokerService) Publish(msg data.Message) (string, error) {
-	slog.Debug("Publishing message", "topic", msg.Topic)
-
-	// Create topic if it does not exist
-	if _, ok := b.topics[msg.Topic]; !ok {
-		b.createTopic(msg.Topic)
+	// Generate message ID if not provided
+	if msg.ID == "" {
+		msg.ID = uuid.NewString()
 	}
 
-	// Save message to database
-	msg.ID = uuid.NewString()
-	msg.Timestamp = time.Now().UnixMicro()
+	// Set timestamp if not provided
+	if msg.Timestamp == 0 {
+		msg.Timestamp = time.Now().UnixMicro()
+	}
+
+	slog.Debug("Publishing message", "topic", msg.Topic, "message", msg.ID)
+
+	// Create topic if it does not exist
+	b.mu.Lock()
+	if _, ok := b.topics[msg.Topic]; !ok {
+		b.topics[msg.Topic] = map[string]chan data.Message{}
+	}
+	b.mu.Unlock()
+
 	err := b.repo.CreateMessage(&msg)
 	if err != nil {
 		return "", err
 	}
 
 	// Send message to all consumers
+	b.mu.RLock()
 	for _, consumer := range b.topics[msg.Topic] {
 		consumer <- msg
 	}
+	b.mu.RUnlock()
 
 	return msg.ID, nil
 }
@@ -64,9 +72,11 @@ func (b *brokerService) Subscribe(consumerName string, topics []string) (<-chan 
 
 	for _, topic := range topics {
 		// Create topic if it does not exist
+		b.mu.Lock()
 		if _, ok := b.topics[topic]; !ok {
-			b.createTopic(topic)
+			b.topics[topic] = map[string]chan data.Message{}
 		}
+		b.mu.Unlock()
 
 		// If consumer already subscribed to topic, return error
 		if _, ok := b.topics[topic][consumerName]; ok {
@@ -85,7 +95,10 @@ func (b *brokerService) Subscribe(consumerName string, topics []string) (<-chan 
 		}
 
 		// Add consumer to topic
+		b.mu.Lock()
 		b.topics[topic][consumerName] = consumer
+		b.mu.Unlock()
+
 		go func() {
 			for _, msg := range messages {
 				consumer <- msg
@@ -99,11 +112,13 @@ func (b *brokerService) Subscribe(consumerName string, topics []string) (<-chan 
 func (b *brokerService) Unsubscribe(consumerName string, topics []string) {
 	slog.Debug("Unsubscribing from topic", "consumer", consumerName, "topics", topics)
 
+	b.mu.Lock()
 	for _, topic := range topics {
 		if _, ok := b.topics[topic]; ok {
 			delete(b.topics[topic], consumerName)
 		}
 	}
+	b.mu.Unlock()
 }
 
 func (b *brokerService) Acknowledge(consumerName string, msg data.Message) error {

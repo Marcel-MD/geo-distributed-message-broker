@@ -12,11 +12,12 @@ import (
 	"google.golang.org/grpc"
 )
 
-func NewBrokerServer(cfg config.Config, broker services.BrokerService) (*grpc.Server, net.Listener, error) {
+func NewBrokerServer(cfg config.Config, broker services.BrokerService, consensus services.ConsensusService) (*grpc.Server, net.Listener, error) {
 	slog.Info("Creating new broker server 🌐")
 
 	srv := &brokerServer{
-		broker: broker,
+		broker:    broker,
+		consensus: consensus,
 	}
 
 	listener, err := net.Listen("tcp", cfg.BrokerPort)
@@ -33,7 +34,8 @@ func NewBrokerServer(cfg config.Config, broker services.BrokerService) (*grpc.Se
 
 type brokerServer struct {
 	proto.UnsafeBrokerServer
-	broker services.BrokerService
+	broker    services.BrokerService
+	consensus services.ConsensusService
 }
 
 func (s *brokerServer) Publish(ctx context.Context, req *proto.PublishRequest) (*proto.PublishResponse, error) {
@@ -42,7 +44,7 @@ func (s *brokerServer) Publish(ctx context.Context, req *proto.PublishRequest) (
 		Body:  req.Body,
 	}
 
-	id, err := s.broker.Publish(msg)
+	id, err := s.consensus.Publish(msg)
 	if err != nil {
 		return nil, err
 	}
@@ -65,9 +67,10 @@ func (s *brokerServer) Subscribe(req *proto.SubscribeRequest, srv proto.Broker_S
 		select {
 		case msg := <-ch:
 			rsp := &proto.MessageResponse{
-				Id:    msg.ID,
-				Topic: msg.Topic,
-				Body:  msg.Body,
+				Id:        msg.ID,
+				Timestamp: msg.Timestamp,
+				Topic:     msg.Topic,
+				Body:      msg.Body,
 			}
 
 			if err := srv.Send(rsp); err != nil {

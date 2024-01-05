@@ -35,9 +35,10 @@ func main() {
 
 	repo := data.NewRepository(db)
 	broker := services.NewBrokerService(repo)
+	consensus := services.NewConsensusService(cfg, broker)
 
 	// Broker Server
-	brokerSrv, brokerListener, err := api.NewBrokerServer(cfg, broker)
+	brokerSrv, brokerListener, err := api.NewBrokerServer(cfg, broker, consensus)
 	if err != nil {
 		slog.Error("Failed to create broker server", "error", err.Error())
 		return
@@ -50,8 +51,6 @@ func main() {
 			return
 		}
 	}()
-
-	consensus := services.NewConsensusService(cfg)
 
 	// Node Server
 	nodeSrv, nodeListener, err := api.NewNodeServer(cfg, consensus)
