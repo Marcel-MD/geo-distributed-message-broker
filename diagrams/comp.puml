@@ -1,12 +1,12 @@
 @startuml
 
 node "Message Broker Node" {
-  component "Consensus Service" as CSS
-  component "Topic Service" as TS
-  component "Topic Storage" as TR
+  database "SQLite" as DB
+  component "Repository" as R
+  component "Consensus Service" as CS
+  component "Broker Service" as B
 
-  component "Consumer Server" as CS
-  component "Producer Server" as PS
+  component "Broker Server" as BS
   component "Node Server" as NS
 }
 
@@ -14,14 +14,17 @@ actor/ "Producers" as P
 actor "Consumers" as C
 node "Other Nodes" as N
 
-TR -> TS
-TS -> CSS
-TS --> CS
-TS --> PS
-CSS --> NS
+R --> DB
+R <- B
+B <- CS
 
-CS --> C
-PS --> P
-NS --> N
+B <-- BS
+CS <-- BS
+BS <-- C
+BS <-- P
+
+CS <-- NS
+NS <-- N
+
 
 @enduml

@@ -1,5 +1,7 @@
 # Geo Distributed Message Broker
 
+This project is still in development and does not meet all requirements outlined below.  
+
 To run the message broker in it's default configuration:
 ```bash
 docker compose up --build
@@ -92,16 +94,36 @@ scalability and management across different environments.
 
 ![Developer use case diagram](./diagrams/use_dev.png)
 
+### Non-Functional Requirements
+
+| Requirement | Target Value |
+| --- | --- |
+| Throughput | The system should support a message throughput of 1,000 msgs/sec (when using multiple topics). |
+| Latency | Latency with no more than 50 milliseconds delay between message publishing and delivery, under typical load conditions. |
+| Scalability | Linear horizontal scalability: Proportional increase with new nodes across different geographical regions. Vertical scalability: Support hardware upgrades for nodes in various regions. |
+| Fault Tolerance | Ensure that the message broker can continue to operate with minimal performance degradation even in the presence of node failures or network interruptions. |
+| High Availability | Aim for at least 99.99% uptime over a year (approximately 52 minutes of downtime per year). |
+| Consistency | Guarantee strong consistency and data integrity across all nodes, ensuring that messages are delivered in the order they were published. |
+| Security | Implement measures to protect against unauthorized access and data breaches, while maintaining minimal impact on system performance. |
+| Load Balancing | Ensure clients can publish or consume messages from nodes near their geographical area. |
+| Message Retention and Cleanup | Configurable message retention with automatic cleanup. |
+| Message Delivery Guarantee | Guarantee at-least-once delivery of messages. |
+| Message Ordering Guarantee | Guarantee in-order delivery of messages. |
+| Message Durability | Guarantee message durability in the event of node failures. |
+| Interface | Provide gRPC interface for clients to publish and consume messages. |
+| Logging | Support logging for system administrators to monitor the health of the system. |
+| Deployment | Provide a deployment mechanism to deploy the system on any cloud platform. |
+
 ## Architecture
+
+### Component Diagram
+![Component diagram](./diagrams/comp.png)
+
+### Deployment Across Multiple Regions
+![Deployment diagram](./diagrams/depl.png)
 
 ### Consensus No Conflicts
 ![Nodes sequence diagram](./diagrams/seq_nodes.png)
 
 ### Consensus With Conflicts
 ![Conflict sequence diagram](./diagrams/seq_conflict.png)
-
-### Deployment Across Multiple Regions
-![Deployment diagram](./diagrams/depl.png)
-
-### Component Diagram
-![Component diagram](./diagrams/comp.png)

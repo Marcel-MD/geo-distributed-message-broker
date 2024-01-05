@@ -1,12 +1,12 @@
 @startuml
 
-actor/ "Producer 1" as P1
-actor/ "Producer 2" as P2
-actor/ "Producer 3" as P3
+actor/ "US Producers" as P1
+actor/ "EU Producers" as P2
+actor/ "ASIA Producers" as P3
 
-actor "Consumer 1" as C1
-actor "Consumer 2" as C2
-actor "Consumer 3" as C3
+actor "US Consumers" as C1
+actor "EU Consumers" as C2
+actor "ASIA Consumers" as C3
 
 
 cloud us-central {
