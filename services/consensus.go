@@ -154,27 +154,41 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 	}
 	c.mu.Unlock()
 
-	topic.RemoveMessage(req.Message.ID)
+	// Remove older version of message if it exists
+	topic.RemoveAckMessage(req.Message.ID)
 
-	topicMessages := topic.GetMessages()
-
-	ack := true
-	for _, m := range topicMessages {
+	// Get all ack messages, split into newer and older messages based on timestamp
+	ackMessages := topic.GetAckMessages()
+	newerMessages := make(map[string]data.Message)
+	olderMessages := make(map[string]data.Message)
+	for _, m := range ackMessages {
 		if m.Timestamp > req.Message.Timestamp {
-			ack = false
-			break
+			newerMessages[m.ID] = m
+		} else {
+			olderMessages[m.ID] = m
 		}
 	}
 
+	// Wait for newer messages to be stable
+	ack := true
+	if len(newerMessages) > 0 {
+		predecessors := topic.Wait(newerMessages)
+		if _, ok := predecessors[req.Message.ID]; !ok {
+			ack = false
+		}
+	}
+
+	// Add message to topic if ack
 	if ack {
-		topic.AddMessage(req.Message, topicMessages)
+		ackMessages = olderMessages
+		topic.AddAckMessage(req.Message, ackMessages)
 		slog.Debug("Propose request acknowledged", "message", req.Message.ID)
 	}
 
 	return models.ProposeResponse{
 		Ack:          ack,
 		Message:      req.Message,
-		Predecessors: topicMessages,
+		Predecessors: ackMessages,
 	}, nil
 }
 
@@ -190,9 +204,12 @@ func (c *consensusService) Stable(req models.StableRequest) error {
 	}
 	c.mu.Unlock()
 
+	// Update predecessors and remove message from topic
+	topic.UpdatePredecessors(req.Message.ID, req.Predecessors)
+	topic.RemoveAckMessage(req.Message.ID)
+
 	// Wait for predecessors to be stable
 	topic.Wait(req.Predecessors)
-	topic.RemoveMessage(req.Message.ID)
 
 	// Publish message to broker
 	_, err := c.broker.Publish(req.Message)
