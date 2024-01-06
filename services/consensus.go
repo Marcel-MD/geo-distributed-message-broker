@@ -154,11 +154,12 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 	}
 	c.mu.Unlock()
 
-	// Remove older version of message if it exists
-	topic.RemoveAckMessage(req.Message.ID)
+	// Remove older version of message if it exists and add new message
+	topic.RemoveMessage(req.Message.ID)
+	topic.AddMessage(req.Message, make(Messages))
 
 	// Get all ack messages, split into newer and older messages based on timestamp
-	ackMessages := topic.GetAckMessages()
+	ackMessages := topic.GetMessages(AckState)
 	newerMessages := make(map[string]data.Message)
 	olderMessages := make(map[string]data.Message)
 	for _, m := range ackMessages {
@@ -178,11 +179,15 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 		}
 	}
 
-	// Add message to topic if ack
 	if ack {
+		// Update predecessors and state
 		ackMessages = olderMessages
-		topic.AddAckMessage(req.Message, ackMessages)
+		topic.UpdateMessage(req.Message.ID, AckState, ackMessages)
 		slog.Debug("Propose request acknowledged", "message", req.Message.ID)
+	} else {
+		// Remove message from topic
+		topic.RemoveMessage(req.Message.ID)
+		slog.Debug("Propose request not acknowledged", "message", req.Message.ID)
 	}
 
 	return models.ProposeResponse{
@@ -204,9 +209,11 @@ func (c *consensusService) Stable(req models.StableRequest) error {
 	}
 	c.mu.Unlock()
 
-	// Update predecessors and remove message from topic
-	topic.UpdatePredecessors(req.Message.ID, req.Predecessors)
-	topic.RemoveAckMessage(req.Message.ID)
+	// Update predecessors and state
+	topic.UpdateMessage(req.Message.ID, StableState, req.Predecessors)
+
+	// Remove message from topic
+	topic.RemoveMessage(req.Message.ID)
 
 	// Wait for predecessors to be stable
 	topic.Wait(req.Predecessors)

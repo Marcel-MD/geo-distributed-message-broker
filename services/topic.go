@@ -11,10 +11,10 @@ import (
 type Messages map[string]data.Message // map[message_id]data.Message
 
 type Topic interface {
-	GetAckMessages() Messages
-	AddAckMessage(msg data.Message, predecessors Messages)
-	RemoveAckMessage(id string)
-	UpdatePredecessors(id string, predecessors Messages)
+	GetMessages(state string) Messages
+	AddMessage(msg data.Message, predecessors Messages)
+	RemoveMessage(id string)
+	UpdateMessage(id string, state string, predecessors Messages)
 	Wait(predecessors Messages) Messages
 }
 
@@ -22,55 +22,66 @@ func NewTopic(name string) Topic {
 	slog.Info("Creating new topic 🗃️", "name", name)
 
 	return &topic{
-		name:        name,
-		ackMessages: make(map[string]MessageTuple),
+		name:     name,
+		messages: make(map[string]MessageTuple),
 	}
 }
 
 type topic struct {
-	name        string
-	ackMessages map[string]MessageTuple // map[message_id]MessageTuple
-	mu          sync.RWMutex            // protects messages
+	name     string
+	messages map[string]MessageTuple // map[message_id]MessageTuple
+	mu       sync.RWMutex            // protects messages
 }
+
+const (
+	ProposedState = "proposed"
+	AckState      = "acknowledged"
+	NackState     = "not acknowledged"
+	StableState   = "stable"
+)
 
 type MessageTuple struct {
 	message      data.Message
 	predecessors Messages
 	waitChannels []chan Messages
+	state        string
 }
 
-func (t *topic) GetAckMessages() Messages {
+func (t *topic) GetMessages(state string) Messages {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
-	messages := make(Messages, len(t.ackMessages))
-	for id, tuple := range t.ackMessages {
-		messages[id] = tuple.message
+	messages := make(Messages, len(t.messages))
+	for id, tuple := range t.messages {
+		if tuple.state == state {
+			messages[id] = tuple.message
+		}
 	}
 
 	return messages
 }
 
-func (t *topic) AddAckMessage(msg data.Message, predecessors Messages) {
+func (t *topic) AddMessage(msg data.Message, predecessors Messages) {
 	t.mu.Lock()
-	t.ackMessages[msg.ID] = MessageTuple{
+	t.messages[msg.ID] = MessageTuple{
 		message:      msg,
 		predecessors: predecessors,
-		waitChannels: []chan Messages{t.scheduleRemoveMessage(msg.ID)},
+		waitChannels: []chan Messages{t.scheduleMessageTimeout(msg.ID)},
+		state:        ProposedState,
 	}
 	t.mu.Unlock()
 }
 
-func (t *topic) scheduleRemoveMessage(id string) chan Messages {
+func (t *topic) scheduleMessageTimeout(id string) chan Messages {
 	timeoutChan := make(chan Messages, 1)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 		defer cancel()
 
 		select {
 		case <-ctx.Done():
 			slog.Warn("Message timed out before being stable", "id", id)
-			t.RemoveAckMessage(id)
+			t.RemoveMessage(id)
 		case <-timeoutChan:
 		}
 	}()
@@ -78,38 +89,39 @@ func (t *topic) scheduleRemoveMessage(id string) chan Messages {
 	return timeoutChan
 }
 
-func (t *topic) RemoveAckMessage(id string) {
+func (t *topic) RemoveMessage(id string) {
 	t.mu.Lock()
-	if tuple, ok := t.ackMessages[id]; ok {
+	if tuple, ok := t.messages[id]; ok {
 		for _, w := range tuple.waitChannels {
 			w <- tuple.predecessors
 		}
-		delete(t.ackMessages, id)
+		delete(t.messages, id)
 	}
 	t.mu.Unlock()
 }
 
-func (t *topic) UpdatePredecessors(id string, predecessors Messages) {
+func (t *topic) UpdateMessage(id string, state string, predecessors Messages) {
 	t.mu.Lock()
-	if tuple, ok := t.ackMessages[id]; ok {
+	if tuple, ok := t.messages[id]; ok {
+		tuple.state = state
 		tuple.predecessors = predecessors
-		t.ackMessages[id] = tuple
+		t.messages[id] = tuple
 	}
 	t.mu.Unlock()
 }
 
-func (t *topic) Wait(predecessors Messages) Messages {
-	if len(predecessors) == 0 {
-		return predecessors
+func (t *topic) Wait(messages Messages) Messages {
+	if len(messages) == 0 {
+		return messages
 	}
 
-	predecessorsOfPredecessors := make(Messages)
-	predecessorsChan := make(chan Messages, len(predecessors))
+	predecessors := make(Messages)
+	predecessorsChan := make(chan Messages, len(messages))
 	var wg sync.WaitGroup
 
 	t.mu.Lock()
-	for _, predecessor := range predecessors {
-		if tuple, ok := t.ackMessages[predecessor.ID]; ok {
+	for _, msg := range messages {
+		if tuple, ok := t.messages[msg.ID]; ok {
 			wg.Add(1)
 			waitChan := make(chan Messages, 1)
 			tuple.waitChannels = append(tuple.waitChannels, waitChan)
@@ -117,7 +129,7 @@ func (t *topic) Wait(predecessors Messages) Messages {
 				predecessorsChan <- <-waitChan
 				wg.Done()
 			}()
-			t.ackMessages[predecessor.ID] = tuple
+			t.messages[msg.ID] = tuple
 		}
 	}
 	t.mu.Unlock()
@@ -126,9 +138,9 @@ func (t *topic) Wait(predecessors Messages) Messages {
 	close(predecessorsChan)
 	for predecessor := range predecessorsChan {
 		for id, msg := range predecessor {
-			predecessorsOfPredecessors[id] = msg
+			predecessors[id] = msg
 		}
 	}
 
-	return predecessorsOfPredecessors
+	return predecessors
 }
