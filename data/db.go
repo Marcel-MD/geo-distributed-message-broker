@@ -20,7 +20,6 @@ func NewDB(cfg config.Config) (*gorm.DB, error) {
 	}
 
 	db.AutoMigrate(&Message{})
-	db.AutoMigrate(&MessageConsumedRecord{})
 
 	return db, nil
 }

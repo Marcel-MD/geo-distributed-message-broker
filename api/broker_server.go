@@ -57,9 +57,9 @@ func (s *brokerServer) Publish(ctx context.Context, req *pb.PublishRequest) (*pb
 }
 
 func (s *brokerServer) Subscribe(req *pb.SubscribeRequest, srv pb.Broker_SubscribeServer) error {
-	ch, err := s.broker.Subscribe(req.ConsumerName, req.Topics)
+	ch, subscriberID, err := s.broker.Subscribe(req.Topics)
 	if err != nil {
-		slog.Error("Failed to subscribe", "error", err.Error())
+		slog.Error("Failed to subscribe", "subscriber", subscriberID, "error", err.Error())
 		return err
 	}
 
@@ -74,19 +74,13 @@ func (s *brokerServer) Subscribe(req *pb.SubscribeRequest, srv pb.Broker_Subscri
 			}
 
 			if err := srv.Send(rsp); err != nil {
-				slog.Error("Failed to send message", "error", err.Error())
-				s.broker.Unsubscribe(req.ConsumerName, req.Topics)
-				return err
-			}
-
-			if err := s.broker.Acknowledge(req.ConsumerName, msg); err != nil {
-				slog.Error("Failed to acknowledge message", "error", err.Error())
-				s.broker.Unsubscribe(req.ConsumerName, req.Topics)
+				slog.Error("Failed to send message", "subscriber", subscriberID, "error", err.Error())
+				s.broker.Unsubscribe(subscriberID, req.Topics)
 				return err
 			}
 
 		case <-srv.Context().Done():
-			s.broker.Unsubscribe(req.ConsumerName, req.Topics)
+			s.broker.Unsubscribe(subscriberID, req.Topics)
 			return nil
 		}
 	}

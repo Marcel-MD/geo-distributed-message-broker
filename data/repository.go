@@ -8,8 +8,7 @@ import (
 
 type Repository interface {
 	CreateMessage(message *Message) error
-	CreateConsumedRecord(record *MessageConsumedRecord) error
-	GetMessages(consumerName string, topicName string) ([]Message, error)
+	GetMessages(topicName string, timestamp int64) ([]Message, error)
 }
 
 func NewRepository(db *gorm.DB) Repository {
@@ -26,19 +25,9 @@ func (r *repository) CreateMessage(message *Message) error {
 	return r.db.Create(message).Error
 }
 
-func (r *repository) CreateConsumedRecord(record *MessageConsumedRecord) error {
-	return r.db.Create(record).Error
-}
-
-func (r *repository) GetMessages(consumerName string, topicName string) ([]Message, error) {
-	var lastConsumedRecord MessageConsumedRecord
-	err := r.db.Where("topic = ? AND consumed_by = ?", topicName, consumerName).Order("timestamp DESC").First(&lastConsumedRecord).Error
-	if err != nil && err != gorm.ErrRecordNotFound {
-		return nil, err
-	}
-
+func (r *repository) GetMessages(topicName string, timestamp int64) ([]Message, error) {
 	var messages []Message
-	if err := r.db.Where("topic = ? AND timestamp > ?", topicName, lastConsumedRecord.Timestamp).Find(&messages).Error; err != nil {
+	if err := r.db.Where("topic = ? AND timestamp > ?", topicName, timestamp).Find(&messages).Error; err != nil {
 		return nil, err
 	}
 

@@ -18,8 +18,7 @@ message PublishResponse {
 }
 
 message SubscribeRequest {
-    repeated string topics = 1;
-    string consumer_name = 2;
+    map<string,int64> topics = 1;
 }
 
 message MessageResponse {

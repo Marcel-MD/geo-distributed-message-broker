@@ -1,7 +1,6 @@
 package services
 
 import (
-	"fmt"
 	"geo-distributed-message-broker/data"
 	"log/slog"
 	"sync"
@@ -12,9 +11,8 @@ import (
 
 type BrokerService interface {
 	Publish(msg data.Message) (string, error)
-	Subscribe(consumerName string, topics []string) (<-chan data.Message, error)
-	Unsubscribe(consumerName string, topics []string)
-	Acknowledge(consumerName string, msg data.Message) error
+	Subscribe(topics map[string]int64) (<-chan data.Message, string, error)
+	Unsubscribe(subscriberID string, topics map[string]int64)
 }
 
 func NewBrokerService(repo data.Repository) BrokerService {
@@ -27,7 +25,7 @@ func NewBrokerService(repo data.Repository) BrokerService {
 }
 
 type brokerService struct {
-	topics map[string]map[string]chan data.Message // map[topic_name]map[consumer_name]chan data.Message
+	topics map[string]map[string]chan data.Message // map[topic_name]map[subscriber_id]chan data.Message
 	mu     sync.RWMutex                            // protects topics
 	repo   data.Repository
 }
@@ -57,79 +55,64 @@ func (b *brokerService) Publish(msg data.Message) (string, error) {
 		return "", err
 	}
 
-	// Send message to all consumers
+	// Send message to all subscribers
 	b.mu.RLock()
-	for _, consumer := range b.topics[msg.Topic] {
-		consumer <- msg
+	for _, subscriber := range b.topics[msg.Topic] {
+		subscriber <- msg
 	}
 	b.mu.RUnlock()
 
 	return msg.ID, nil
 }
 
-func (b *brokerService) Subscribe(consumerName string, topics []string) (<-chan data.Message, error) {
-	slog.Debug("Subscribing to topic", "consumer", consumerName, "topics", topics)
+func (b *brokerService) Subscribe(topics map[string]int64) (<-chan data.Message, string, error) {
+	// Generate subscriber ID
+	subscriberID := uuid.NewString()
 
-	for _, topic := range topics {
+	slog.Debug("Subscribing to topics", "subscriber", subscriberID, "topics", topics)
+
+	b.mu.Lock()
+	for topic := range topics {
 		// Create topic if it does not exist
-		b.mu.Lock()
 		if _, ok := b.topics[topic]; !ok {
 			b.topics[topic] = map[string]chan data.Message{}
 		}
-		b.mu.Unlock()
-
-		// If consumer already subscribed to topic, return error
-		if _, ok := b.topics[topic][consumerName]; ok {
-			return nil, fmt.Errorf("consumer with name %s already exists for topics %v", consumerName, topics)
-		}
 	}
+	b.mu.Unlock()
 
-	// Create consumer
-	consumer := make(chan data.Message, 10)
+	// Create subscriber channel
+	subscriber := make(chan data.Message, 10)
 
-	for _, topic := range topics {
-		// Get all messages published after last consumed message
-		messages, err := b.repo.GetMessages(consumerName, topic)
+	for topic, timestamp := range topics {
+		// Get all messages published after last timestamp
+		messages, err := b.repo.GetMessages(topic, timestamp)
 		if err != nil {
-			return nil, err
+			return nil, subscriberID, err
 		}
 
-		// Add consumer to topic
+		// Add subscriber to topic
 		b.mu.Lock()
-		b.topics[topic][consumerName] = consumer
+		b.topics[topic][subscriberID] = subscriber
 		b.mu.Unlock()
 
 		go func() {
 			for _, msg := range messages {
-				consumer <- msg
+				subscriber <- msg
 			}
 		}()
 	}
 
-	return consumer, nil
+	return subscriber, subscriberID, nil
 }
 
-func (b *brokerService) Unsubscribe(consumerName string, topics []string) {
-	slog.Debug("Unsubscribing from topic", "consumer", consumerName, "topics", topics)
+func (b *brokerService) Unsubscribe(subscriberID string, topics map[string]int64) {
+	slog.Debug("Unsubscribing from topics", "subscriber", subscriberID, "topics", topics)
 
 	b.mu.Lock()
-	for _, topic := range topics {
+	for topic := range topics {
 		if _, ok := b.topics[topic]; ok {
-			delete(b.topics[topic], consumerName)
+			delete(b.topics[topic], subscriberID)
 		}
 	}
 	b.mu.Unlock()
-}
-
-func (b *brokerService) Acknowledge(consumerName string, msg data.Message) error {
-	slog.Debug("Acknowledging message", "consumer", consumerName, "topic", msg.Topic, "message", msg.ID)
-
-	record := data.MessageConsumedRecord{
-		MessageID:  msg.ID,
-		ConsumedBy: consumerName,
-		Timestamp:  msg.Timestamp,
-		Topic:      msg.Topic,
-	}
-
-	return b.repo.CreateConsumedRecord(&record)
 }
