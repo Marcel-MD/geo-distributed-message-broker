@@ -11,7 +11,7 @@ import (
 type Messages map[string]data.Message // map[message_id]data.Message
 
 type Topic interface {
-	GetMessages(state string) Messages
+	GetMessages(states ...string) Messages
 	AddMessage(msg data.Message, predecessors Messages)
 	RemoveMessage(id string)
 	UpdateMessage(id string, state string, predecessors Messages)
@@ -47,13 +47,18 @@ type MessageTuple struct {
 	state        string
 }
 
-func (t *topic) GetMessages(state string) Messages {
+func (t *topic) GetMessages(states ...string) Messages {
 	t.mu.RLock()
 	defer t.mu.RUnlock()
 
+	statesMap := make(map[string]bool)
+	for _, state := range states {
+		statesMap[state] = true
+	}
+
 	messages := make(Messages, len(t.messages))
 	for id, tuple := range t.messages {
-		if tuple.state == state {
+		if _, ok := statesMap[tuple.state]; ok {
 			messages[id] = tuple.message
 		}
 	}
