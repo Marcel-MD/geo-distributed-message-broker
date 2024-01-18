@@ -85,10 +85,7 @@ func (b *brokerService) Subscribe(topics map[string]int64) (<-chan data.Message,
 
 	for topic, timestamp := range topics {
 		// Get all messages published after last timestamp
-		messages, err := b.repo.GetMessages(topic, timestamp)
-		if err != nil {
-			return nil, subscriberID, err
-		}
+		msgChan := b.repo.GetMessages(topic, timestamp)
 
 		// Add subscriber to topic
 		b.mu.Lock()
@@ -96,8 +93,16 @@ func (b *brokerService) Subscribe(topics map[string]int64) (<-chan data.Message,
 		b.mu.Unlock()
 
 		go func() {
-			for _, msg := range messages {
-				subscriber <- msg
+			for {
+				messages, ok := <-msgChan
+
+				if !ok {
+					break
+				}
+
+				for _, msg := range messages {
+					subscriber <- msg
+				}
 			}
 		}()
 	}
