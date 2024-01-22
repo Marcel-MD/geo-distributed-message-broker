@@ -61,59 +61,103 @@ func (c *consensusService) Publish(msg data.Message) (string, error) {
 		Message: msg,
 	}
 
-	// Propose message to self
-	rsp, err := c.Propose(proposeReq)
-	if err != nil || !rsp.Ack {
-		return "", errors.New("failed to self propose message")
-	}
+	var predecessors map[string]data.Message
+	var success bool = false
 
-	predecessors := make(map[string]data.Message)
-	for id, msg := range rsp.Predecessors {
-		predecessors[id] = msg
-	}
-
-	quorum := len(c.nodes)/2 + 1
-	acks := 1
-	nacks := 0
-	rspChan := make(chan models.ProposeResponse, len(c.nodes))
-
-	// Propose message to all other nodes
-	for host, node := range c.nodes {
-		go func(host string, node Node) {
-			rsp, err := node.Propose(proposeReq)
-
-			if err != nil {
-				slog.Error("Failed to propose message", "node", host, "error", err)
-				rspChan <- models.ProposeResponse{
-					Ack:     false,
-					Message: msg,
-				}
-			}
-
-			rspChan <- rsp
-		}(host, node)
-	}
-
-	// Wait for quorum
-	for rsp := range rspChan {
-		if rsp.Ack {
-			acks++
-		} else {
-			nacks++
+	// Propose message with max 3 retries
+	for i := 0; i < 3; i++ {
+		// Propose message to self
+		rsp, err := c.Propose(proposeReq)
+		if err != nil {
+			proposeReq.Message.Timestamp++
+			slog.Error("Failed to self propose message, retrying...", "error", err)
+			continue
 		}
 
+		predecessors = make(map[string]data.Message)
+		highestTimestamp := proposeReq.Message.Timestamp
+
 		for id, msg := range rsp.Predecessors {
+			if msg.Timestamp > highestTimestamp {
+				highestTimestamp = msg.Timestamp
+			}
 			predecessors[id] = msg
 		}
 
-		if acks >= quorum || nacks >= quorum {
-			break
+		if !rsp.Ack {
+			proposeReq.Message.Timestamp = highestTimestamp + 1
+			slog.Warn("Failed to self propose message, retrying...")
+			continue
 		}
+
+		quorum := len(c.nodes)/2 + 1
+		acks := 1
+		nacks := 0
+
+		type response struct {
+			proposeResponse models.ProposeResponse
+			err             error
+		}
+		responseChan := make(chan response, len(c.nodes))
+
+		// Propose message to all other nodes
+		for host, node := range c.nodes {
+			go func(host string, node Node) {
+				rsp, err := node.Propose(proposeReq)
+				if err != nil {
+					slog.Error("Failed to propose message", "node", host, "error", err)
+					responseChan <- response{
+						proposeResponse: models.ProposeResponse{},
+						err:             err,
+					}
+				}
+
+				responseChan <- response{
+					proposeResponse: rsp,
+				}
+
+			}(host, node)
+		}
+
+		// Wait for quorum
+		for rsp := range responseChan {
+			if rsp.err != nil {
+				quorum -= 1
+				continue
+			}
+
+			proposeRsp := rsp.proposeResponse
+
+			if proposeRsp.Ack {
+				acks++
+			} else {
+				nacks++
+			}
+
+			for id, msg := range proposeRsp.Predecessors {
+				if msg.Timestamp > highestTimestamp {
+					highestTimestamp = msg.Timestamp
+				}
+				predecessors[id] = msg
+			}
+
+			if acks >= quorum || nacks >= quorum {
+				break
+			}
+		}
+
+		if acks < quorum {
+			proposeReq.Message.Timestamp = highestTimestamp + 1
+			slog.Warn("Failed to propose message to other nodes, retrying...")
+			continue
+		}
+
+		success = true
+		break
 	}
 
-	if acks < quorum {
-		// TODO: Remove message from current node
-		return "", errors.New("failed to reach quorum")
+	if !success {
+		return "", errors.New("failed to propose message")
 	}
 
 	// Prepare stable message request
@@ -128,13 +172,13 @@ func (c *consensusService) Publish(msg data.Message) (string, error) {
 		go func(host string, node Node) {
 			err := node.Stable(stableReq)
 			if err != nil {
-				slog.Error("Failed to stable message", "node", host, "error", err)
+				slog.Error("Failed to send stable message", "node", host, "error", err)
 			}
 		}(host, node)
 	}
 
 	// Stable message to self
-	err = c.Stable(stableReq)
+	err := c.Stable(stableReq)
 	if err != nil {
 		return "", err
 	}
