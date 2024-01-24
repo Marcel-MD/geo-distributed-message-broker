@@ -1,7 +1,7 @@
 @startuml
 left to right direction
 
-actor "Producer" as P
+actor "Publisher" as P
 
 rectangle "Message Broker" {
   usecase "Authenticate" as A

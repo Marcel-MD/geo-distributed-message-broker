@@ -34,7 +34,7 @@ func (r *repository) GetMessages(topicName string, timestamp int64) <-chan []Mes
 		var messages []Message
 
 		// Processing records in batches of 50
-		result := r.db.Where("topic = ? AND timestamp > ?", topicName, timestamp).FindInBatches(&messages, 50, func(tx *gorm.DB, batch int) error {
+		result := r.db.Where("topic = ? AND timestamp > ?", topicName, timestamp).Order("timestamp").FindInBatches(&messages, 50, func(tx *gorm.DB, batch int) error {
 			select {
 			case msgChan <- messages:
 				slog.Debug("Sending batch of messages", "topic", topicName, "batch", batch, "size", len(messages))

@@ -58,30 +58,30 @@ Design and implement a distributed, fault-tolerant message broker system that le
 
 ## Requirements
 
-### Consumer Requirements
-1. The system must provide authentication mechanisms for consumers, ensuring secure access to
+### Subscriber Requirements
+1. The system must provide authentication mechanisms for subscribers, ensuring secure access to
 topics.
-2. Consumers should have the ability to subscribe to specific topics of interest, allowing them to
+2. Subscribers should have the ability to subscribe to specific topics of interest, allowing them to
 receive relevant messages.
-3. Consumers must be able to unsubscribe from topics when they no longer wish to receive
+3. Subscribers must be able to unsubscribe from topics when they no longer wish to receive
 messages from those topics.
-4. Consumers should be able to consume messages from the subscribed topics, enabling them to
+4. Subscribers should be able to receive messages from the subscribed topics, enabling them to
 process the messages as needed.
-5. Consumers should be able to receive messages from the nearest data center in the geo-distributed
+5. Subscribers should be able to receive messages from the nearest data center in the geo-distributed
 network to minimize latency and enhance the real-time nature of their applications.
 
-![Consumer use case diagram](./diagrams/use_cons.png)
+![Subscriber use case diagram](./diagrams/use_cons.png)
 
-### Producer Requirements
-1. The system must provide authentication mechanisms for producers, ensuring secure publishing
+### Publisher Requirements
+1. The system must provide authentication mechanisms for publishers, ensuring secure publishing
 of messages to topics.
-2. Producers must be able to create new topics in the message broker for effective message categorization and publishing.
-3. Producers should be able to publish messages to specific topics, with the message broker
-ensuring reliable message delivery to consumers.
-4. Producers should be able to publish messages to the nearest data center in the geo-distributed
+2. Publishers must be able to create new topics in the message broker for effective message categorization and publishing.
+3. Publishers should be able to publish messages to specific topics, with the message broker
+ensuring reliable message delivery to subscribers.
+4. Publishers should be able to publish messages to the nearest data center in the geo-distributed
 network to minimize latency.
 
-![Producer use case diagram](./diagrams/use_prod.png)
+![Publisher use case diagram](./diagrams/use_prod.png)
 
 ### Developer Requirements
 1. Developers should have access to comprehensive documentation that explains the message
@@ -104,12 +104,12 @@ scalability and management across different environments.
 | High Availability | Aim for at least 99.99% uptime over a year (approximately 52 minutes of downtime per year). |
 | Consistency | Guarantee strong consistency and data integrity across all nodes, ensuring that messages are delivered in the order they were published. |
 | Security | Implement measures to protect against unauthorized access and data breaches, while maintaining minimal impact on system performance. |
-| Load Balancing | Ensure clients can publish or consume messages from nodes near their geographical area. |
+| Load Balancing | Ensure clients can publish or receive messages from nodes near their geographical area. |
 | Message Retention and Cleanup | Configurable message retention with automatic cleanup. |
 | Message Delivery Guarantee | Guarantee at-least-once delivery of messages. |
 | Message Ordering Guarantee | Guarantee in-order delivery of messages. |
 | Message Durability | Guarantee message durability in the event of node failures. |
-| Interface | Provide gRPC interface for clients to publish and consume messages. |
+| Interface | Provide gRPC interface for clients to publish and receive messages. |
 | Logging | Support logging for system administrators to monitor the health of the system. |
 | Deployment | Provide a deployment mechanism to deploy the system on any cloud platform. |
 
@@ -121,8 +121,8 @@ scalability and management across different environments.
 ### Deployment Across Multiple Regions
 ![Deployment diagram](./diagrams/depl.png)
 
-### Consensus No Conflicts
+<!-- ### Consensus No Conflicts
 ![Nodes sequence diagram](./diagrams/seq_nodes.png)
 
 ### Consensus With Conflicts
-![Conflict sequence diagram](./diagrams/seq_conflict.png)
+![Conflict sequence diagram](./diagrams/seq_conflict.png) -->

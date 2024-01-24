@@ -10,3 +10,6 @@ image:
 
 push:
 	docker image push marcelvlasenco/geo-distributed-message-broker:latest
+
+k6:
+	k6 run ./test.js

@@ -1,14 +1,14 @@
 @startuml
 left to right direction
 
-actor "Consumer" as C
+actor "Subscriber" as C
 
 rectangle "Message Broker" {
   usecase "Authenticate" as A
   usecase "Connect" as CO
   usecase "Create topic" as CT
   usecase "Subscribe to topic" as ST
-  usecase "Consume messages" as CS
+  usecase "Receive messages" as CS
   usecase "Unsubscribe from topic" as UT
 }
 

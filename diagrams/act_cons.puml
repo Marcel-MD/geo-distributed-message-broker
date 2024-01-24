@@ -8,7 +8,7 @@ if (topic exists?) then (yes)
 else (no)
   :create new topic;
 endif
-:consume messages;
+:receive messages;
 stop
 
 @enduml

@@ -10,8 +10,8 @@ node "Message Broker Node" {
   component "Node Server" as NS
 }
 
-actor/ "Producers" as P
-actor "Consumers" as C
+actor/ "Publishers" as P
+actor "Subscribers" as C
 node "Other Nodes" as N
 
 R --> DB
