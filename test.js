@@ -52,22 +52,19 @@ export function subscriber() {
         plaintext: true,
     });
 
-    let topicsMap = new Map();
-    topicsMap.set(randomItem(topics), 0);
-
     let request = {
-        topics: topicsMap
+        topics: {}
     };
+
+    let topic = randomItem(topics);
+    request.topics[topic] = 0;
 
     let stream = new grpc.Stream(client, 'broker.Broker/Subscribe');
     stream.write(request);
 
     // sets up a handler for the data (server sends data) event 
     stream.on('data', (stats) => {
-        console.log('Finished trip with', stats.pointCount, 'points');
-        console.log('Passed', stats.featureCount, 'features');
-        console.log('Traveled', stats.distance, 'meters');
-        console.log('It took', stats.elapsedTime, 'seconds');
+        console.log('Received', stats);
     });
     
     // sets up a handler for the end event (stream closes)
@@ -85,6 +82,6 @@ export function subscriber() {
 
     stream.end();
     
-    sleep(randomIntBetween(4, 6));
+    sleep(30);
     client.close();
 }
