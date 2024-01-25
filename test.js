@@ -1,36 +1,90 @@
 import { check, sleep } from 'k6'
-import grpc from 'k6/net/grpc'
+import grpc from 'k6/experimental/grpc'
 import encoding from 'k6/encoding'
-import { randomString, randomItem } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js'
+import { randomString, randomItem, randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js'
 
 export const options = {
-    stages: [
-        { duration: '30s', target: 10 }
-    ],
-};
+    scenarios: {
+      publisher: {
+        executor: 'per-vu-iterations',
+        exec: 'publisher',
+        vus: 1,
+        iterations: 5,
+        maxDuration: '30s',
+      },
+      subscriber: {
+        executor: 'per-vu-iterations',
+        exec: 'subscriber',
+        vus: 5,
+        iterations: 1,
+        maxDuration: '30s',
+      },
+    },
+  };
 
 const topics = ['Alerts', 'News'];
 const nodes = ['localhost:8070', 'localhost:8080', 'localhost:8090']
-
 const client = new grpc.Client();
 client.load(['proto'], 'broker.proto');
 
-export default () => {
+export function publisher() {
     client.connect(randomItem(nodes), {
         plaintext: true,
     });
 
-    const data = {
+    let request = {
         body: encoding.b64encode(randomString(20)),
         topic: randomItem(topics),
     };
 
-    const response = client.invoke('broker.Broker/Publish', data);
+    let response = client.invoke('broker.Broker/Publish', request);
 
     check(response, {
         'status is OK': (r) => r && r.status === grpc.StatusOK,
     });
     
+    sleep(randomIntBetween(1, 2));
     client.close();
-    sleep(1);
+}
+
+export function subscriber() {
+    client.connect(randomItem(nodes), {
+        plaintext: true,
+    });
+
+    let topicsMap = new Map();
+    topicsMap.set(randomItem(topics), 0);
+
+    let request = {
+        topics: topicsMap
+    };
+
+    let stream = new grpc.Stream(client, 'broker.Broker/Subscribe');
+    stream.write(request);
+
+    // sets up a handler for the data (server sends data) event 
+    stream.on('data', (stats) => {
+        console.log('Finished trip with', stats.pointCount, 'points');
+        console.log('Passed', stats.featureCount, 'features');
+        console.log('Traveled', stats.distance, 'meters');
+        console.log('It took', stats.elapsedTime, 'seconds');
+    });
+    
+    // sets up a handler for the end event (stream closes)
+    stream.on('end', function () {
+        // The server has finished sending
+        client.close();
+        console.log('All done');
+    });
+
+    // sets up a handler for the error event (an error occurs)
+    stream.on('error', function (e) {
+        // An error has occurred and the stream has been closed.
+        console.log('Error: ' + JSON.stringify(e));
+    });
+
+    stream.end();
+    
+    sleep(randomIntBetween(4, 6));
+    client.close();
 }
