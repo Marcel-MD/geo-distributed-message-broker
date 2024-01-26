@@ -6,7 +6,11 @@ import (
 	"log/slog"
 	"sync"
 	"time"
+
+	"github.com/patrickmn/go-cache"
 )
+
+const MESSAGE_TTL = 20 * time.Second
 
 type Messages map[string]data.Message // map[message_id]data.Message
 
@@ -16,27 +20,29 @@ type Topic interface {
 	RemoveMessage(id string)
 	UpdateMessage(id string, state string, predecessors Messages)
 	Wait(predecessors Messages) Messages
+	IsStable(id string) bool
 }
 
 func NewTopic(name string) Topic {
 	slog.Info("Creating new topic 🗃️", "name", name)
 
 	return &topic{
-		name:     name,
-		messages: make(map[string]MessageTuple),
+		name:        name,
+		messages:    make(map[string]MessageTuple),
+		stableCache: cache.New(MESSAGE_TTL, 2*MESSAGE_TTL),
 	}
 }
 
 type topic struct {
-	name     string
-	messages map[string]MessageTuple // map[message_id]MessageTuple
-	mu       sync.RWMutex            // protects messages
+	name        string
+	messages    map[string]MessageTuple // map[message_id]MessageTuple
+	mu          sync.RWMutex            // protects messages
+	stableCache *cache.Cache
 }
 
 const (
 	ProposedState = "proposed"
 	AckState      = "acknowledged"
-	NackState     = "not acknowledged"
 	StableState   = "stable"
 )
 
@@ -48,20 +54,19 @@ type MessageTuple struct {
 }
 
 func (t *topic) GetMessages(states ...string) Messages {
-	t.mu.RLock()
-	defer t.mu.RUnlock()
-
 	statesMap := make(map[string]bool)
 	for _, state := range states {
 		statesMap[state] = true
 	}
 
+	t.mu.RLock()
 	messages := make(Messages, len(t.messages))
 	for id, tuple := range t.messages {
 		if _, ok := statesMap[tuple.state]; ok {
 			messages[id] = tuple.message
 		}
 	}
+	t.mu.RUnlock()
 
 	return messages
 }
@@ -80,7 +85,7 @@ func (t *topic) AddMessage(msg data.Message, predecessors Messages) {
 func (t *topic) scheduleMessageTimeout(id string) chan Messages {
 	timeoutChan := make(chan Messages, 1)
 	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
+		ctx, cancel := context.WithTimeout(context.Background(), MESSAGE_TTL)
 		defer cancel()
 
 		select {
@@ -100,7 +105,14 @@ func (t *topic) RemoveMessage(id string) {
 		for _, w := range tuple.waitChannels {
 			w <- tuple.predecessors
 		}
+
+		if tuple.state == StableState {
+			t.stableCache.Set(id, true, cache.DefaultExpiration)
+		}
+
 		delete(t.messages, id)
+	} else {
+		t.stableCache.Set(id, true, cache.DefaultExpiration)
 	}
 	t.mu.Unlock()
 }
@@ -148,4 +160,9 @@ func (t *topic) Wait(messages Messages) Messages {
 	}
 
 	return predecessors
+}
+
+func (t *topic) IsStable(id string) bool {
+	_, ok := t.stableCache.Get(id)
+	return ok
 }

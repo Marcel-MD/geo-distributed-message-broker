@@ -8,7 +8,7 @@ export const options = {
       publisher: {
         executor: 'per-vu-iterations',
         exec: 'publisher',
-        vus: 1,
+        vus: 5,
         iterations: 5,
         maxDuration: '30s',
       },
@@ -28,7 +28,7 @@ const client = new grpc.Client();
 client.load(['proto'], 'broker.proto');
 
 export function publisher() {
-    sleep(randomIntBetween(1, 2));
+    sleep(randomIntBetween(1, 3));
     
     client.connect(randomItem(nodes), {
         plaintext: true,

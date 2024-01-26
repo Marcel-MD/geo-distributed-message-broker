@@ -86,7 +86,7 @@ func (c *consensusService) Publish(msg data.Message) (string, error) {
 
 		if !rsp.Ack {
 			proposeReq.Message.Timestamp = highestTimestamp + 1
-			slog.Warn("Failed to self propose message, retrying...")
+			slog.Warn("Failed to self propose message, retrying...", "message", proposeReq.Message.ID, "topic", proposeReq.Message.Topic, "timestamp", proposeReq.Message.Timestamp)
 			continue
 		}
 
@@ -148,7 +148,7 @@ func (c *consensusService) Publish(msg data.Message) (string, error) {
 
 		if acks < quorum {
 			proposeReq.Message.Timestamp = highestTimestamp + 1
-			slog.Warn("Failed to propose message to other nodes, retrying...")
+			slog.Warn("Failed to propose message to other nodes, retrying...", "message", proposeReq.Message.ID, "topic", proposeReq.Message.Topic, "timestamp", proposeReq.Message.Timestamp)
 			continue
 		}
 
@@ -187,7 +187,7 @@ func (c *consensusService) Publish(msg data.Message) (string, error) {
 }
 
 func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeResponse, error) {
-	slog.Debug("Receiving propose request", "message", req.Message.ID)
+	slog.Debug("Receiving propose request", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 
 	// Create topic if it does not exist
 	c.mu.Lock()
@@ -197,6 +197,16 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 		c.topics[req.Message.Topic] = topic
 	}
 	c.mu.Unlock()
+
+	// Check if message is already stable
+	if topic.IsStable(req.Message.ID) {
+		slog.Debug("Propose request already stable", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
+		return models.ProposeResponse{
+			Ack:          true,
+			Message:      req.Message,
+			Predecessors: make(Messages),
+		}, nil
+	}
 
 	// Remove older version of message if it exists and add new message
 	topic.RemoveMessage(req.Message.ID)
@@ -227,11 +237,11 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 		// Update predecessors and state
 		ackMessages = olderMessages
 		topic.UpdateMessage(req.Message.ID, AckState, ackMessages)
-		slog.Debug("Propose request acknowledged", "message", req.Message.ID)
+		slog.Debug("Propose request acknowledged", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 	} else {
 		// Remove message from topic
 		topic.RemoveMessage(req.Message.ID)
-		slog.Debug("Propose request not acknowledged", "message", req.Message.ID)
+		slog.Debug("Propose request not acknowledged", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 	}
 
 	return models.ProposeResponse{
@@ -242,7 +252,7 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 }
 
 func (c *consensusService) Stable(req models.StableRequest) error {
-	slog.Debug("Receiving stable request", "message", req.Message.ID)
+	slog.Debug("Receiving stable request", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 
 	// Create topic if it does not exist
 	c.mu.Lock()
