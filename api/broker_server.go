@@ -66,6 +66,11 @@ func (s *brokerServer) Subscribe(req *pb.SubscribeRequest, srv pb.Broker_Subscri
 	for {
 		select {
 		case msg := <-ch:
+			if timestamp, ok := req.Topics[msg.Topic]; !ok || msg.Timestamp < timestamp {
+				slog.Warn("Skipping message", "subscriber", subscriberID, "message", msg.ID)
+				continue
+			}
+
 			rsp := &pb.MessageResponse{
 				Id:        msg.ID,
 				Timestamp: msg.Timestamp,

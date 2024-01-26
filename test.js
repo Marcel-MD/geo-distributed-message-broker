@@ -28,6 +28,8 @@ const client = new grpc.Client();
 client.load(['proto'], 'broker.proto');
 
 export function publisher() {
+    sleep(randomIntBetween(1, 2));
+    
     client.connect(randomItem(nodes), {
         plaintext: true,
     });
@@ -40,10 +42,9 @@ export function publisher() {
     let response = client.invoke('broker.Broker/Publish', request);
 
     check(response, {
-        'status is OK': (r) => r && r.status === grpc.StatusOK,
+        'publish is successful': (r) => r && r.status === grpc.StatusOK,
     });
     
-    sleep(randomIntBetween(1, 2));
     client.close();
 }
 
@@ -56,32 +57,42 @@ export function subscriber() {
         topics: {}
     };
 
+    let timestamp = Date.now() * 1000;
     let topic = randomItem(topics);
-    request.topics[topic] = 0;
+    request.topics[topic] = timestamp;
 
     let stream = new grpc.Stream(client, 'broker.Broker/Subscribe');
     stream.write(request);
+    stream.end();
 
     // sets up a handler for the data (server sends data) event 
-    stream.on('data', (stats) => {
-        console.log('Received', stats);
-    });
-    
-    // sets up a handler for the end event (stream closes)
-    stream.on('end', function () {
-        // The server has finished sending
-        client.close();
-        console.log('All done');
+    stream.on('data', (message) => {
+        check(message, {
+            'message is not empty': (m) => m && m.body !== '',
+            'message has the right topic': (m) => m && m.topic === topic,
+            'message has correct ordering': (m) => {
+                if (!m) {
+                    return false;
+                }
+
+                if (m.timestamp < timestamp) {
+                    console.log(`Message ${m.id} has timestamp ${m.timestamp} which is less than ${timestamp}`)
+                    return false;
+                }
+
+                timestamp = m.timestamp;
+                return true;
+            },
+        })
     });
 
     // sets up a handler for the error event (an error occurs)
     stream.on('error', function (e) {
-        // An error has occurred and the stream has been closed.
-        console.log('Error: ' + JSON.stringify(e));
+        check(e, {
+            'error is null': (e) => !e || e.message === "canceled by client (k6)",
+        });
     });
-
-    stream.end();
     
-    sleep(30);
+    sleep(15);
     client.close();
 }

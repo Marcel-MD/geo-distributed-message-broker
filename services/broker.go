@@ -95,7 +95,6 @@ func (b *brokerService) Subscribe(topics map[string]int64) (<-chan data.Message,
 		go func() {
 			for {
 				messages, ok := <-msgChan
-
 				if !ok {
 					break
 				}
