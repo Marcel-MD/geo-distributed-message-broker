@@ -41,7 +41,7 @@ func (b *brokerService) Publish(msg data.Message) (string, error) {
 		msg.Timestamp = time.Now().UnixMicro()
 	}
 
-	slog.Debug("Publishing message", "topic", msg.Topic, "message", msg.ID)
+	slog.Debug("Publishing message", "message", msg.ID, "topic", msg.Topic, "timestamp", msg.Timestamp)
 
 	// Create topic if it does not exist
 	b.mu.Lock()

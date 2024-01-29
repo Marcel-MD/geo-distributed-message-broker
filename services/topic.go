@@ -1,150 +1,223 @@
 package services
 
 import (
-	"context"
 	"geo-distributed-message-broker/data"
 	"log/slog"
 	"sync"
 	"time"
-
-	"github.com/patrickmn/go-cache"
 )
 
-const MESSAGE_TTL = 20 * time.Second
+const MESSAGE_TTL = 10 * time.Second
+const MESSAGE_CLEANUP = 20 * time.Second
 
 type Messages map[string]data.Message // map[message_id]data.Message
 
 type Topic interface {
 	GetMessages(states ...string) Messages
-	AddMessage(msg data.Message, predecessors Messages)
-	RemoveMessage(id string)
-	UpdateMessage(id string, state string, predecessors Messages)
-	Wait(predecessors Messages) Messages
-	IsStable(id string) bool
+	AddMessage(msg data.Message, state string, predecessors Messages) bool
+	UpdateMessage(msg data.Message, state string, predecessors Messages)
+	WaitForStateUpdate(predecessors Messages, states ...string) Messages
 }
 
 func NewTopic(name string) Topic {
 	slog.Info("Creating new topic 🗃️", "name", name)
 
-	return &topic{
-		name:        name,
-		messages:    make(map[string]MessageTuple),
-		stableCache: cache.New(MESSAGE_TTL, 2*MESSAGE_TTL),
+	t := &topic{
+		name:     name,
+		messages: make(map[string]MessageTuple),
 	}
+	time.AfterFunc(MESSAGE_CLEANUP, t.CleanupJob)
+
+	return t
 }
 
 type topic struct {
-	name        string
-	messages    map[string]MessageTuple // map[message_id]MessageTuple
-	mu          sync.RWMutex            // protects messages
-	stableCache *cache.Cache
+	name     string
+	messages map[string]MessageTuple // map[message_id]MessageTuple
+	mu       sync.RWMutex            // protects messages
 }
 
 const (
-	ProposedState = "proposed"
-	AckState      = "acknowledged"
-	StableState   = "stable"
+	ProposedState  = "proposed"
+	AckState       = "acknowledged"
+	NackState      = "not_acknowledged"
+	StableState    = "stable"
+	PublishedState = "published"
+	ExpiredState   = "expired"
 )
 
 type MessageTuple struct {
 	message      data.Message
 	predecessors Messages
-	waitChannels []chan Messages
+	waitChannels []chan WaitResult
 	state        string
+	expire       int64
+}
+
+type WaitResult struct {
+	State        string
+	Predecessors Messages
+}
+
+func (t *MessageTuple) createWaitChannel() chan WaitResult {
+	waitChan := make(chan WaitResult, 5)
+	t.waitChannels = append(t.waitChannels, waitChan)
+	return waitChan
+}
+
+func (t *MessageTuple) broadcastWaitResult() {
+	if len(t.waitChannels) == 0 {
+		return
+	}
+
+	result := WaitResult{
+		State:        t.state,
+		Predecessors: t.predecessors,
+	}
+
+	for _, w := range t.waitChannels {
+		w <- result
+	}
+}
+
+func (t *topic) CleanupJob() {
+	messagesRemoved := 0
+
+	t.mu.Lock()
+	now := time.Now().Unix()
+	for id, tuple := range t.messages {
+		if tuple.expire < now {
+			if tuple.state != PublishedState {
+				slog.Warn("Message expired before being published", "topic", t.name, "message", id)
+			}
+
+			tuple.state = ExpiredState
+			tuple.broadcastWaitResult()
+			delete(t.messages, id)
+			messagesRemoved++
+		}
+	}
+	t.mu.Unlock()
+
+	if messagesRemoved > 0 {
+		slog.Info("Cleanup job finished", "topic", t.name, "messages_removed", messagesRemoved)
+	}
+
+	time.AfterFunc(MESSAGE_CLEANUP, t.CleanupJob)
 }
 
 func (t *topic) GetMessages(states ...string) Messages {
+	if len(states) == 0 {
+		return make(Messages)
+	}
+
 	statesMap := make(map[string]bool)
 	for _, state := range states {
 		statesMap[state] = true
 	}
 
-	t.mu.RLock()
+	t.mu.Lock()
 	messages := make(Messages, len(t.messages))
 	for id, tuple := range t.messages {
 		if _, ok := statesMap[tuple.state]; ok {
 			messages[id] = tuple.message
 		}
 	}
-	t.mu.RUnlock()
+	t.mu.Unlock()
 
 	return messages
 }
 
-func (t *topic) AddMessage(msg data.Message, predecessors Messages) {
+func (t *topic) AddMessage(msg data.Message, state string, predecessors Messages) bool {
 	t.mu.Lock()
-	t.messages[msg.ID] = MessageTuple{
-		message:      msg,
-		predecessors: predecessors,
-		waitChannels: []chan Messages{t.scheduleMessageTimeout(msg.ID)},
-		state:        ProposedState,
+	defer t.mu.Unlock()
+
+	tuple, ok := t.messages[msg.ID]
+	if ok {
+		if tuple.state == StableState || tuple.state == PublishedState {
+			return false
+		}
+
+		tuple.state = NackState
+		tuple.broadcastWaitResult()
 	}
-	t.mu.Unlock()
+
+	tuple.message = msg
+	tuple.state = state
+	tuple.predecessors = predecessors
+	tuple.waitChannels = []chan WaitResult{}
+	tuple.expire = time.Now().Add(MESSAGE_TTL).Unix()
+
+	t.messages[msg.ID] = tuple
+
+	return true
 }
 
-func (t *topic) scheduleMessageTimeout(id string) chan Messages {
-	timeoutChan := make(chan Messages, 1)
-	go func() {
-		ctx, cancel := context.WithTimeout(context.Background(), MESSAGE_TTL)
-		defer cancel()
-
-		select {
-		case <-ctx.Done():
-			slog.Warn("Message timed out before being stable", "id", id)
-			t.RemoveMessage(id)
-		case <-timeoutChan:
-		}
-	}()
-
-	return timeoutChan
-}
-
-func (t *topic) RemoveMessage(id string) {
+func (t *topic) UpdateMessage(msg data.Message, state string, predecessors Messages) {
 	t.mu.Lock()
-	if tuple, ok := t.messages[id]; ok {
-		for _, w := range tuple.waitChannels {
-			w <- tuple.predecessors
-		}
-
-		if tuple.state == StableState {
-			t.stableCache.Set(id, true, cache.DefaultExpiration)
-		}
-
-		delete(t.messages, id)
-	} else {
-		t.stableCache.Set(id, true, cache.DefaultExpiration)
-	}
-	t.mu.Unlock()
-}
-
-func (t *topic) UpdateMessage(id string, state string, predecessors Messages) {
-	t.mu.Lock()
-	if tuple, ok := t.messages[id]; ok {
+	tuple, ok := t.messages[msg.ID]
+	if ok {
 		tuple.state = state
 		tuple.predecessors = predecessors
-		t.messages[id] = tuple
+		tuple.broadcastWaitResult()
+		t.messages[msg.ID] = tuple
 	}
 	t.mu.Unlock()
+
+	if !ok {
+		t.AddMessage(msg, state, predecessors)
+	}
 }
 
-func (t *topic) Wait(messages Messages) Messages {
+func (t *topic) WaitForStateUpdate(messages Messages, states ...string) Messages {
 	if len(messages) == 0 {
 		return messages
 	}
 
+	endStatesMap := map[string]bool{
+		NackState:      true,
+		ExpiredState:   true,
+		PublishedState: true,
+	}
+
+	desiredStatesMap := make(map[string]bool)
+	for _, state := range states {
+		desiredStatesMap[state] = true
+	}
+
 	predecessors := make(Messages)
-	predecessorsChan := make(chan Messages, len(messages))
+	waitResultsChan := make(chan WaitResult, len(messages))
 	var wg sync.WaitGroup
 
 	t.mu.Lock()
 	for _, msg := range messages {
 		if tuple, ok := t.messages[msg.ID]; ok {
+			if _, ok := endStatesMap[tuple.state]; ok {
+				continue
+			}
+
+			if _, ok := desiredStatesMap[tuple.state]; ok {
+				for id, msg := range tuple.predecessors {
+					predecessors[id] = msg
+				}
+				continue
+			}
+
 			wg.Add(1)
-			waitChan := make(chan Messages, 1)
-			tuple.waitChannels = append(tuple.waitChannels, waitChan)
+			waitChan := tuple.createWaitChannel()
 			go func() {
-				predecessorsChan <- <-waitChan
-				wg.Done()
+				for result := range waitChan {
+					if _, ok := endStatesMap[result.State]; ok {
+						wg.Done()
+						return
+					}
+
+					if _, ok := desiredStatesMap[result.State]; ok {
+						waitResultsChan <- result
+						wg.Done()
+						return
+					}
+				}
 			}()
 			t.messages[msg.ID] = tuple
 		}
@@ -152,17 +225,12 @@ func (t *topic) Wait(messages Messages) Messages {
 	t.mu.Unlock()
 
 	wg.Wait()
-	close(predecessorsChan)
-	for predecessor := range predecessorsChan {
-		for id, msg := range predecessor {
+	close(waitResultsChan)
+	for result := range waitResultsChan {
+		for id, msg := range result.Predecessors {
 			predecessors[id] = msg
 		}
 	}
 
 	return predecessors
-}
-
-func (t *topic) IsStable(id string) bool {
-	_, ok := t.stableCache.Get(id)
-	return ok
 }

@@ -7,7 +7,6 @@ require (
 	github.com/google/uuid v1.5.0
 	github.com/joho/godotenv v1.5.1
 	github.com/lmittmann/tint v1.0.3
-	github.com/patrickmn/go-cache v2.1.0+incompatible
 	google.golang.org/grpc v1.60.1
 	google.golang.org/protobuf v1.31.0
 	gorm.io/driver/sqlite v1.5.4

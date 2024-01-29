@@ -198,19 +198,15 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 	}
 	c.mu.Unlock()
 
-	// Check if message is already stable
-	if topic.IsStable(req.Message.ID) {
-		slog.Debug("Propose request already stable", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
+	// And add new message if not already stable
+	if ok := topic.AddMessage(req.Message, ProposedState, make(Messages)); !ok {
+		slog.Warn("Propose request already stable", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 		return models.ProposeResponse{
 			Ack:          true,
 			Message:      req.Message,
 			Predecessors: make(Messages),
 		}, nil
 	}
-
-	// Remove older version of message if it exists and add new message
-	topic.RemoveMessage(req.Message.ID)
-	topic.AddMessage(req.Message, make(Messages))
 
 	// Get all ack messages, split into newer and older messages based on timestamp
 	ackMessages := topic.GetMessages(AckState)
@@ -227,20 +223,20 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 	// Wait for newer messages to be stable
 	ack := true
 	if len(newerMessages) > 0 {
-		predecessors := topic.Wait(newerMessages)
+		predecessors := topic.WaitForStateUpdate(newerMessages, StableState)
 		if _, ok := predecessors[req.Message.ID]; !ok {
 			ack = false
 		}
 	}
 
 	if ack {
-		// Update predecessors and state
+		// Acknowledge message
 		ackMessages = olderMessages
-		topic.UpdateMessage(req.Message.ID, AckState, ackMessages)
+		topic.UpdateMessage(req.Message, AckState, ackMessages)
 		slog.Debug("Propose request acknowledged", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 	} else {
-		// Remove message from topic
-		topic.RemoveMessage(req.Message.ID)
+		// Nack message
+		topic.UpdateMessage(req.Message, NackState, ackMessages)
 		slog.Debug("Propose request not acknowledged", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 	}
 
@@ -264,15 +260,13 @@ func (c *consensusService) Stable(req models.StableRequest) error {
 	c.mu.Unlock()
 
 	// Update predecessors and state
-	topic.UpdateMessage(req.Message.ID, StableState, req.Predecessors)
-
-	// Remove message from topic
-	topic.RemoveMessage(req.Message.ID)
+	topic.UpdateMessage(req.Message, StableState, req.Predecessors)
 
 	// Wait for predecessors to be stable
-	topic.Wait(req.Predecessors)
+	topic.WaitForStateUpdate(req.Predecessors, StableState)
 
 	// Publish message to broker
+	topic.UpdateMessage(req.Message, PublishedState, req.Predecessors)
 	_, err := c.broker.Publish(req.Message)
 	if err != nil {
 		return err

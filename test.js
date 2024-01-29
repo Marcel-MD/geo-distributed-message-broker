@@ -1,5 +1,5 @@
 import { check, sleep } from 'k6'
-import grpc from 'k6/experimental/grpc'
+import grpc from 'k6/net/grpc'
 import encoding from 'k6/encoding'
 import { randomString, randomItem, randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js'
 
@@ -9,7 +9,7 @@ export const options = {
         executor: 'per-vu-iterations',
         exec: 'publisher',
         vus: 5,
-        iterations: 5,
+        iterations: 10,
         maxDuration: '30s',
       },
       subscriber: {
@@ -22,7 +22,7 @@ export const options = {
     },
   };
 
-const topics = ['Alerts', 'News'];
+const topics = ['Weather', 'Sports', 'Politics'];
 const nodes = ['localhost:8070', 'localhost:8080', 'localhost:8090']
 const client = new grpc.Client();
 client.load(['proto'], 'broker.proto');
@@ -93,6 +93,6 @@ export function subscriber() {
         });
     });
     
-    sleep(15);
+    sleep(30);
     client.close();
 }
