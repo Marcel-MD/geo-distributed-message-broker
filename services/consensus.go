@@ -138,7 +138,10 @@ func (c *consensusService) Publish(msg data.Message) (string, error) {
 				if msg.Timestamp > highestTimestamp {
 					highestTimestamp = msg.Timestamp
 				}
-				predecessors[id] = msg
+
+				if proposeRsp.Ack {
+					predecessors[id] = msg
+				}
 			}
 
 			if acks >= quorum || nacks >= quorum {
@@ -199,7 +202,7 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 	c.mu.Unlock()
 
 	// And add new message if not already stable
-	if ok := topic.AddMessage(req.Message, ProposedState, make(Messages)); !ok {
+	if ok := topic.UpsertMessage(req.Message, ProposedState, make(Messages)); !ok {
 		slog.Warn("Propose request already stable", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 		return models.ProposeResponse{
 			Ack:          true,
@@ -232,11 +235,11 @@ func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeRes
 	if ack {
 		// Acknowledge message
 		ackMessages = olderMessages
-		topic.UpdateMessage(req.Message, AckState, ackMessages)
+		topic.UpsertMessage(req.Message, AckState, ackMessages)
 		slog.Debug("Propose request acknowledged", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 	} else {
 		// Nack message
-		topic.UpdateMessage(req.Message, NackState, ackMessages)
+		topic.UpsertMessage(req.Message, NackState, ackMessages)
 		slog.Debug("Propose request not acknowledged", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
 	}
 
@@ -260,13 +263,13 @@ func (c *consensusService) Stable(req models.StableRequest) error {
 	c.mu.Unlock()
 
 	// Update predecessors and state
-	topic.UpdateMessage(req.Message, StableState, req.Predecessors)
+	topic.UpsertMessage(req.Message, StableState, req.Predecessors)
 
-	// Wait for predecessors to be stable
-	topic.WaitForStateUpdate(req.Predecessors, StableState)
+	// Wait for predecessors to be published
+	topic.WaitForStateUpdate(req.Predecessors, PublishedState)
 
 	// Publish message to broker
-	topic.UpdateMessage(req.Message, PublishedState, req.Predecessors)
+	topic.UpsertMessage(req.Message, PublishedState, req.Predecessors)
 	_, err := c.broker.Publish(req.Message)
 	if err != nil {
 		return err

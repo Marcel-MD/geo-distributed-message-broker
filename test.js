@@ -10,17 +10,35 @@ export const options = {
         exec: 'publisher',
         vus: 5,
         iterations: 10,
-        maxDuration: '30s',
+        maxDuration: '30s'
       },
       subscriber: {
         executor: 'per-vu-iterations',
         exec: 'subscriber',
         vus: 5,
         iterations: 1,
-        maxDuration: '30s',
+        maxDuration: '30s'
       },
     },
-  };
+    // So we get count in the summary, to demonstrate different metrics are different
+    summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)', 'count'],
+    thresholds: {
+        // Intentionally empty. We'll programatically define our bogus
+        // thresholds (to generate the sub-metrics) below. In your real-world
+        // load test, you can add any real threshoulds you want here.
+    }
+};
+
+for (let key in options.scenarios) {
+    // Each scenario automaticall tags the metrics it generates with its own name
+    let thresholdName = `grpc_req_duration{scenario:${key}}`;
+    // Check to prevent us from overwriting a threshold that already exists
+    if (!options.thresholds[thresholdName]) {
+        options.thresholds[thresholdName] = [];
+    }
+    // 'max>=0' is a bogus condition that will always be fulfilled
+    options.thresholds[thresholdName].push('max>=0');
+}
 
 const topics = ['Weather', 'Sports', 'Politics'];
 const nodes = ['localhost:8070', 'localhost:8080', 'localhost:8090']

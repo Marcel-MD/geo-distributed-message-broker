@@ -14,8 +14,7 @@ type Messages map[string]data.Message // map[message_id]data.Message
 
 type Topic interface {
 	GetMessages(states ...string) Messages
-	AddMessage(msg data.Message, state string, predecessors Messages) bool
-	UpdateMessage(msg data.Message, state string, predecessors Messages)
+	UpsertMessage(msg data.Message, state string, predecessors Messages) bool
 	WaitForStateUpdate(predecessors Messages, states ...string) Messages
 }
 
@@ -128,45 +127,49 @@ func (t *topic) GetMessages(states ...string) Messages {
 	return messages
 }
 
-func (t *topic) AddMessage(msg data.Message, state string, predecessors Messages) bool {
+func (t *topic) UpsertMessage(msg data.Message, state string, predecessors Messages) bool {
 	t.mu.Lock()
 	defer t.mu.Unlock()
 
 	tuple, ok := t.messages[msg.ID]
-	if ok {
-		if tuple.state == StableState || tuple.state == PublishedState {
-			return false
-		}
-
-		tuple.state = NackState
-		tuple.broadcastWaitResult()
-	}
-
-	tuple.message = msg
-	tuple.state = state
-	tuple.predecessors = predecessors
-	tuple.waitChannels = []chan WaitResult{}
-	tuple.expire = time.Now().Add(MESSAGE_TTL).Unix()
-
-	t.messages[msg.ID] = tuple
-
-	return true
-}
-
-func (t *topic) UpdateMessage(msg data.Message, state string, predecessors Messages) {
-	t.mu.Lock()
-	tuple, ok := t.messages[msg.ID]
-	if ok {
+	if !ok {
+		// If no message exists, create a new one
+		tuple.message = msg
 		tuple.state = state
 		tuple.predecessors = predecessors
-		tuple.broadcastWaitResult()
+		tuple.waitChannels = []chan WaitResult{}
+		tuple.expire = time.Now().Add(MESSAGE_TTL).Unix()
 		t.messages[msg.ID] = tuple
+		return true
 	}
-	t.mu.Unlock()
 
-	if !ok {
-		t.AddMessage(msg, state, predecessors)
+	switch tuple.state {
+	case PublishedState:
+		return false
+	case StableState:
+		if state != PublishedState {
+			return false
+		}
 	}
+
+	if state == ProposedState {
+		tuple.state = NackState
+		tuple.broadcastWaitResult()
+
+		tuple.message = msg
+		tuple.state = state
+		tuple.predecessors = predecessors
+		tuple.waitChannels = []chan WaitResult{}
+		tuple.expire = time.Now().Add(MESSAGE_TTL).Unix()
+		t.messages[msg.ID] = tuple
+		return true
+	}
+
+	tuple.state = state
+	tuple.predecessors = predecessors
+	tuple.broadcastWaitResult()
+	t.messages[msg.ID] = tuple
+	return false
 }
 
 func (t *topic) WaitForStateUpdate(messages Messages, states ...string) Messages {
