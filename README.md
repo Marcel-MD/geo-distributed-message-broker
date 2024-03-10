@@ -2,6 +2,15 @@
 
 This project is still in development and does not meet all requirements outlined below.  
 
+### Todo
+
+1. Add some form of authentication
+2. Sync data when a new node joins the network
+3. Add and remove nodes dynamically at runtime
+4. Create configurable Docker image and deployment guide
+
+### How to run
+
 To run the message broker in it's default configuration:
 ```bash
 docker compose up --build

@@ -5,20 +5,20 @@ import { randomString, randomItem, randomIntBetween } from 'https://jslib.k6.io/
 
 export const options = {
     scenarios: {
-      publisher: {
-        executor: 'per-vu-iterations',
-        exec: 'publisher',
-        vus: 5,
-        iterations: 10,
-        maxDuration: '30s'
-      },
-      subscriber: {
-        executor: 'per-vu-iterations',
-        exec: 'subscriber',
-        vus: 5,
-        iterations: 1,
-        maxDuration: '30s'
-      },
+        publisher: {
+            executor: 'per-vu-iterations',
+            exec: 'publisher',
+            vus: 5,
+            iterations: 10,
+            maxDuration: '40s'
+        },
+        subscriber: {
+            executor: 'per-vu-iterations',
+            exec: 'subscriber',
+            vus: 5,
+            iterations: 1,
+            maxDuration: '40s'
+        },
     },
     // So we get count in the summary, to demonstrate different metrics are different
     summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)', 'count'],
@@ -40,14 +40,14 @@ for (let key in options.scenarios) {
     options.thresholds[thresholdName].push('max>=0');
 }
 
-const topics = ['Weather', 'Sports', 'Politics'];
+const topics = ['Weather', 'Sports', 'Politics'] // , 'Technology', 'Science'];
 const nodes = ['localhost:8070', 'localhost:8080', 'localhost:8090']
 const client = new grpc.Client();
 client.load(['proto'], 'broker.proto');
 
 export function publisher() {
     sleep(randomIntBetween(1, 3));
-    
+
     client.connect(randomItem(nodes), {
         plaintext: true,
     });
@@ -62,7 +62,7 @@ export function publisher() {
     check(response, {
         'publish is successful': (r) => r && r.status === grpc.StatusOK,
     });
-    
+
     client.close();
 }
 
@@ -110,7 +110,7 @@ export function subscriber() {
             'error is null': (e) => !e || e.message === "canceled by client (k6)",
         });
     });
-    
+
     sleep(30);
     client.close();
 }

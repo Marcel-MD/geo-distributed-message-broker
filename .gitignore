@@ -25,3 +25,6 @@
 
 # Database
 broker.db
+
+# Mac
+.DS_Store
