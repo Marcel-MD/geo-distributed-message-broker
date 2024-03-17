@@ -28,5 +28,8 @@ WORKDIR /root/
 # Copy the Pre-built binary file from the previous stage
 COPY --from=builder /app/main ./
 
+# Copy the cert folder
+COPY --from=builder /app/cert ./cert
+
 # Command to run the executable
 CMD ["./main"]

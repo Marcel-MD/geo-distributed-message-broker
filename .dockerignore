@@ -29,6 +29,5 @@ broker.db
 # Mac
 .DS_Store
 
-# Certificates
-*.srl
-*.pem
+# Diagrams
+diagrams/

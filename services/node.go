@@ -2,12 +2,15 @@ package services
 
 import (
 	"context"
+	"crypto/tls"
+	"crypto/x509"
 	"geo-distributed-message-broker/models"
 	"geo-distributed-message-broker/pb"
 	"log/slog"
+	"os"
 
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/credentials/insecure"
+	"google.golang.org/grpc/credentials"
 )
 
 type Node interface {
@@ -19,7 +22,33 @@ type Node interface {
 func NewNode(host string) (Node, error) {
 	slog.Info("Creating new node client 📡", "node", host)
 
-	conn, err := grpc.Dial(host, grpc.WithTransportCredentials(insecure.NewCredentials()))
+	// read ca's cert
+	caCert, err := os.ReadFile("cert/ca-cert.pem")
+	if err != nil {
+		return nil, err
+	}
+
+	// create cert pool and append ca's cert
+	certPool := x509.NewCertPool()
+	if ok := certPool.AppendCertsFromPEM(caCert); !ok {
+		return nil, err
+	}
+
+	//read client cert
+	clientCert, err := tls.LoadX509KeyPair("cert/client-cert.pem", "cert/client-key.pem")
+	if err != nil {
+		return nil, err
+	}
+
+	// set config of tls credential
+	config := &tls.Config{
+		Certificates: []tls.Certificate{clientCert},
+		RootCAs:      certPool,
+	}
+
+	tlsCredential := credentials.NewTLS(config)
+
+	conn, err := grpc.Dial(host, grpc.WithTransportCredentials(tlsCredential))
 	if err != nil {
 		return nil, err
 	}

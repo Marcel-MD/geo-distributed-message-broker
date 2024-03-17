@@ -1,38 +1,33 @@
 @startuml
 
-actor "Producer 1" as P1
+actor "Publisher 1" as P1
 box "Message Broker"
 participant "Node 1" as N1
 participant "Node 2" as N2
 participant "Node 3" as N3
-participant "Node 4" as N4
-participant "Node 5" as N5
 end box
-actor "Producer 2" as P2
+actor "Publisher 2" as P2
 
+N3 <- P2 : Publish msg B
 P1 -> N1 : Publish msg A
-N5 <- P2 : Publish msg B
 
 N1 -> N2 : Propose A first msg
-N1 <-- N2 : Accept A first msg
+N1 <-- N2 : Ack A first msg
+
+N3 -> N2 : Propose B first msg
+activate N2
+
 N1 -> N3 : Propose A first msg
-N1 <-- N3 : Accept A first msg
+N1 <-- N3 : Msg B before msg A
 
-N5 -> N4 : Propose B first msg
-N5 <-- N4 : Accept B first msg
-N5 -> N3 : Propose B first msg
-N5 <-- N3 : Propose B second msg
+N1 -> N3 : Stable msg B before msg A
 
-N1 -> N1 : Commit A first msg
-N1 -> N2 : Commit A first msg
-N1 -> N3 : Commit A first msg
-N1 -> N4 : Commit A first msg
-N1 -> N5 : Commit A first msg
+N1 -> N2 : Stable msg B before msg A
+N2 --> N3 : Ack B first msg
+deactivate N2
 
-N5 <- N5 : Commit B second msg
-N4 <- N5 : Commit B second msg
-N3 <- N5 : Commit B second msg
-N2 <- N5 : Commit B second msg
-N1 <- N5 : Commit B second msg
+N3 -> N2 : Stable B first msg
+
+N3 -> N1 : Stable B first msg
 
 @enduml

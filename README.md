@@ -5,13 +5,19 @@ This project is still in development and does not meet all requirements outlined
 ### Todo
 
 1. Add some form of authentication
-2. Sync data when a new node joins the network
-3. Add and remove nodes dynamically at runtime
-4. Create configurable Docker image and deployment guide
+2. Create configurable Docker image and deployment guide
+3. Sync data when node comes back online
 
-### How to run
+### How to run the message broker locally
 
-To run the message broker in it's default configuration:
+First you need to generate SSL/TLS certificates. You can use `openssl` to generate self-signed certificates.  
+There are example commands in `makefile` you can run as follows:
+```bash
+make gen_cert
+make sign_cert
+```
+
+Then to run the message broker in it's default configuration using Docker, use the following command:
 ```bash
 docker compose up --build
 ```
