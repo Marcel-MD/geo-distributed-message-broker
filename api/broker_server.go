@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/base64"
 	"geo-distributed-message-broker/config"
 	"geo-distributed-message-broker/data"
 	"geo-distributed-message-broker/pb"
@@ -9,7 +10,10 @@ import (
 	"log/slog"
 	"net"
 
+	"github.com/grpc-ecosystem/go-grpc-middleware/v2/interceptors/auth"
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
+	"google.golang.org/grpc/status"
 )
 
 func NewBrokerServer(cfg config.Config, broker services.BrokerService, consensus services.ConsensusService) (*grpc.Server, net.Listener, error) {
@@ -25,7 +29,12 @@ func NewBrokerServer(cfg config.Config, broker services.BrokerService, consensus
 		return nil, nil, err
 	}
 
-	grpcSrv := grpc.NewServer()
+	authFunc := newAuthFunc(cfg)
+
+	grpcSrv := grpc.NewServer(
+		grpc.UnaryInterceptor(auth.UnaryServerInterceptor(authFunc)),
+		grpc.StreamInterceptor(auth.StreamServerInterceptor(authFunc)),
+	)
 
 	pb.RegisterBrokerServer(grpcSrv, srv)
 
@@ -46,7 +55,7 @@ func (s *brokerServer) Publish(ctx context.Context, req *pb.PublishRequest) (*pb
 
 	id, err := s.consensus.Publish(msg)
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to publish: %v", err)
 	}
 
 	rsp := &pb.PublishResponse{
@@ -60,7 +69,7 @@ func (s *brokerServer) Subscribe(req *pb.SubscribeRequest, srv pb.Broker_Subscri
 	ch, subscriberID, err := s.broker.Subscribe(req.Topics)
 	if err != nil {
 		slog.Error("Failed to subscribe", "subscriber", subscriberID, "error", err.Error())
-		return err
+		return status.Errorf(codes.Internal, "failed to subscribe: %v", err)
 	}
 
 	for {
@@ -81,12 +90,29 @@ func (s *brokerServer) Subscribe(req *pb.SubscribeRequest, srv pb.Broker_Subscri
 			if err := srv.Send(rsp); err != nil {
 				slog.Error("Failed to send message", "subscriber", subscriberID, "error", err.Error())
 				s.broker.Unsubscribe(subscriberID, req.Topics)
-				return err
+				return status.Errorf(codes.Internal, "failed to send message: %v", err)
 			}
 
 		case <-srv.Context().Done():
 			s.broker.Unsubscribe(subscriberID, req.Topics)
 			return nil
 		}
+	}
+}
+
+func newAuthFunc(cfg config.Config) auth.AuthFunc {
+	return func(ctx context.Context) (context.Context, error) {
+		token, err := auth.AuthFromMD(ctx, "basic")
+		if err != nil {
+			return nil, err
+		}
+
+		auth := cfg.Username + ":" + cfg.Password
+		authEncoded := base64.StdEncoding.EncodeToString([]byte(auth))
+		if token != authEncoded {
+			return nil, status.Errorf(codes.Unauthenticated, "invalid auth token: %v", err)
+		}
+
+		return ctx, nil
 	}
 }

@@ -14,7 +14,9 @@ import (
 	"os"
 
 	"google.golang.org/grpc"
+	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/credentials"
+	"google.golang.org/grpc/status"
 )
 
 func NewNodeServer(cfg config.Config, consensus services.ConsensusService) (*grpc.Server, net.Listener, error) {
@@ -72,7 +74,7 @@ type nodeServer struct {
 func (s *nodeServer) Propose(ctx context.Context, req *pb.ProposeRequest) (*pb.ProposeResponse, error) {
 	rsp, err := s.consensus.Propose(models.ToProposeRequest(req))
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to propose: %v", err)
 	}
 
 	return rsp.ToPb(), nil
@@ -81,7 +83,7 @@ func (s *nodeServer) Propose(ctx context.Context, req *pb.ProposeRequest) (*pb.P
 func (s *nodeServer) Stable(ctx context.Context, req *pb.StableRequest) (*pb.StableResponse, error) {
 	err := s.consensus.Stable(models.ToStableRequest(req))
 	if err != nil {
-		return nil, err
+		return nil, status.Errorf(codes.Internal, "failed to stable: %v", err)
 	}
 
 	return &pb.StableResponse{

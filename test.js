@@ -45,6 +45,12 @@ const nodes = ['localhost:8070', 'localhost:8080', 'localhost:8090']
 const client = new grpc.Client();
 client.load(['proto'], 'broker.proto');
 
+const params = {
+    metadata: {
+        'authorization': "basic " + encoding.b64encode('admin:password'),
+    }
+}
+
 export function publisher() {
     sleep(randomIntBetween(1, 3));
 
@@ -57,7 +63,7 @@ export function publisher() {
         topic: randomItem(topics),
     };
 
-    let response = client.invoke('broker.Broker/Publish', request);
+    let response = client.invoke('broker.Broker/Publish', request, params);
 
     check(response, {
         'publish is successful': (r) => r && r.status === grpc.StatusOK,
@@ -79,7 +85,7 @@ export function subscriber() {
     let topic = randomItem(topics);
     request.topics[topic] = timestamp;
 
-    let stream = new grpc.Stream(client, 'broker.Broker/Subscribe');
+    let stream = new grpc.Stream(client, 'broker.Broker/Subscribe', params);
     stream.write(request);
     stream.end();
 
