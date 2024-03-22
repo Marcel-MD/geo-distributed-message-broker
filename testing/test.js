@@ -1,31 +1,34 @@
 import { check, sleep } from 'k6'
 import grpc from 'k6/net/grpc'
 import encoding from 'k6/encoding'
-import { randomString, randomItem, randomIntBetween } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js'
+import { randomString, randomItem } from 'https://jslib.k6.io/k6-utils/1.4.0/index.js'
 
 export const options = {
     scenarios: {
         publisher: {
-            executor: 'per-vu-iterations',
+            executor: 'ramping-arrival-rate',
             exec: 'publisher',
-            vus: 5,
-            iterations: 10,
-            maxDuration: '40s'
+            preAllocatedVUs: 10,
+            timeUnit: '1s',
+            stages: [
+                { target: 50, duration: '30s' },
+                { target: 100, duration: '30s' },
+                { target: 100, duration: '60s' },
+                { target: 50, duration: '30s' },
+                { target: 0, duration: '30s' },
+            ]
         },
         subscriber: {
             executor: 'per-vu-iterations',
             exec: 'subscriber',
-            vus: 5,
-            iterations: 1,
-            maxDuration: '40s'
+            vus: 10,
+            iterations: 1
         },
     },
-    // So we get count in the summary, to demonstrate different metrics are different
     summaryTrendStats: ['avg', 'min', 'med', 'max', 'p(90)', 'p(95)', 'p(99)', 'count'],
     thresholds: {
         // Intentionally empty. We'll programatically define our bogus
-        // thresholds (to generate the sub-metrics) below. In your real-world
-        // load test, you can add any real threshoulds you want here.
+        // thresholds (to generate the sub-metrics) below.
     }
 };
 
@@ -40,10 +43,10 @@ for (let key in options.scenarios) {
     options.thresholds[thresholdName].push('max>=0');
 }
 
-const topics = ['Weather', 'Sports', 'Politics'] // , 'Technology', 'Science'];
+const topics = ['Weather', 'Sports', 'Politics', 'Technology', 'Science'];
 const nodes = ['localhost:8070', 'localhost:8080', 'localhost:8090']
 const client = new grpc.Client();
-client.load(['proto'], 'broker.proto');
+client.load(['../proto'], 'broker.proto');
 
 const params = {
     metadata: {
@@ -52,8 +55,6 @@ const params = {
 }
 
 export function publisher() {
-    sleep(randomIntBetween(1, 3));
-
     client.connect(randomItem(nodes), {
         plaintext: true,
     });
@@ -117,6 +118,6 @@ export function subscriber() {
         });
     });
 
-    sleep(30);
+    sleep(200);
     client.close();
 }

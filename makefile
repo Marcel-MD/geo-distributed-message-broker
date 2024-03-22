@@ -15,7 +15,12 @@ gen_proto:
 	protoc --proto_path=proto proto/node.proto --go_out=. --go-grpc_out=.
 
 k6:
-	k6 run ./test.js
+	k6 run ./testing/test.js
+
+k6_prometheus:
+	K6_PROMETHEUS_RW_SERVER_URL=http://localhost:9090/api/v1/write \
+	K6_PROMETHEUS_RW_TREND_AS_NATIVE_HISTOGRAM=true \
+	k6 run -o experimental-prometheus-rw ./testing/test.js
 
 gen_cert:
 	openssl req -x509 -newkey rsa:4096 -nodes -days 365 -keyout cert/ca-key.pem -out cert/ca-cert.pem -subj "/C=MD/ST=Moldova/L=Chisinau/O=UTM/OU=FAF/CN=Marcel/emailAddress=marcel.vlasenco@isa.utm.md"

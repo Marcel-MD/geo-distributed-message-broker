@@ -2,12 +2,6 @@
 
 This project is still in development and does not meet all requirements outlined below.  
 
-### Todo
-
-1. Add some form of authentication
-2. Create configurable Docker image and deployment guide
-3. Sync data when node comes back online
-
 ### How to run the message broker locally
 
 First you need to generate SSL/TLS certificates. You can use `openssl` to generate self-signed certificates.  
@@ -22,7 +16,7 @@ Then to run the message broker in it's default configuration using Docker, use t
 docker compose up --build
 ```
 
-Message broker nodes will be available on `localhost:8070`, `localhost:8080`, and `localhost:8090`.  
+Message broker nodes will be available on `localhost:8070`, `localhost:8080`, and `localhost:8090`. It uses basic authentication with username `admin` and password `password`.  
 Interact with them using gRPC client of your choice:
 ```proto
 syntax = "proto3";
