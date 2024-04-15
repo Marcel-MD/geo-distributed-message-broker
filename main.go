@@ -52,21 +52,6 @@ func main() {
 		}
 	}()
 
-	// Node Server
-	nodeSrv, nodeListener, err := api.NewNodeServer(cfg, consensus)
-	if err != nil {
-		slog.Error("Failed to create node server", "error", err.Error())
-		return
-	}
-
-	slog.Info(fmt.Sprintf("Starting node server on port %s 🚀", cfg.NodePort))
-	go func() {
-		if err := nodeSrv.Serve(nodeListener); err != nil {
-			slog.Error("Failed to start node server", "error", err.Error())
-			return
-		}
-	}()
-
 	// Graceful shutdown
 	quit := make(chan os.Signal, 1)
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM, syscall.SIGSEGV)
@@ -75,9 +60,6 @@ func main() {
 
 	// Shutdown broker server
 	brokerSrv.GracefulStop()
-
-	// Shutdown node server
-	nodeSrv.GracefulStop()
 
 	// Close DB connection
 	if err := data.CloseDB(db); err != nil {

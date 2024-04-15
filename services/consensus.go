@@ -1,279 +1,128 @@
 package services
 
 import (
+	"encoding/json"
 	"errors"
 	"geo-distributed-message-broker/config"
 	"geo-distributed-message-broker/data"
-	"geo-distributed-message-broker/models"
 	"log/slog"
 	"sync"
 	"time"
 
+	anotherSlog "github.com/gookit/slog"
+
 	"github.com/google/uuid"
+	"github.com/madalv/conalg/caesar"
 )
 
 type ConsensusService interface {
 	Publish(msg data.Message) (string, error)
-	Propose(req models.ProposeRequest) (models.ProposeResponse, error)
-	Stable(req models.StableRequest) error
+	DetermineConflict(c1, c2 []byte) bool
+	Execute(c []byte)
 }
 
 func NewConsensusService(cfg config.Config, broker BrokerService) ConsensusService {
 	slog.Info("Creating new consensus service 🏛️")
-	nodes := make(map[string]Node)
 
-	for _, nodeHost := range cfg.Nodes {
-		node, err := NewNode(nodeHost)
-		if err != nil {
-			slog.Error("Failed to create node client", "node", nodeHost, "error", err)
-			continue
-		}
-
-		nodes[nodeHost] = node
+	srv := consensusService{
+		proposedMessages: make(map[string]chan messageResponse),
+		cfg:              cfg,
+		broker:           broker,
 	}
 
-	return &consensusService{
-		nodes:  nodes,
-		topics: make(map[string]Topic),
-		broker: broker,
-	}
+	conalg := caesar.InitConalgModule(&srv, "", anotherSlog.InfoLevel, true)
+	srv.conalg = conalg
+
+	return &srv
+}
+
+type messageResponse struct {
+	Message data.Message
+	Err     error
 }
 
 type consensusService struct {
-	nodes  map[string]Node  // map[node_host]Node
-	topics map[string]Topic // map[topic_name]Topic
-	mu     sync.RWMutex     // protects topics
-	broker BrokerService
+	proposedMessages map[string]chan messageResponse
+	mx               sync.RWMutex
+	cfg              config.Config
+	conalg           caesar.Conalg
+	broker           BrokerService
 }
 
-func (c *consensusService) Publish(msg data.Message) (string, error) {
-	if len(c.nodes) == 0 {
-		return c.broker.Publish(msg)
+func (c *consensusService) DetermineConflict(message1, message2 []byte) bool {
+	var msg1 data.Message
+	err := json.Unmarshal(message1, &msg1)
+	if err != nil {
+		slog.Error("Failed to unmarshal message1", "error", err)
+		return true
 	}
 
-	// Prepare propose message request
-	body := msg.Body
-	msg.Body = []byte{}
-	msg.ID = uuid.NewString()
-	msg.Timestamp = time.Now().UnixMicro()
+	var msg2 data.Message
+	err = json.Unmarshal(message2, &msg2)
+	if err != nil {
+		slog.Error("Failed to unmarshal message2", "error", err)
+		return true
+	}
 
-	proposeReq := models.ProposeRequest{
+	if msg1.Topic == msg2.Topic {
+		return true
+	}
+
+	return false
+}
+
+func (c *consensusService) Execute(message []byte) {
+	var msg data.Message
+	err := json.Unmarshal(message, &msg)
+	if err != nil {
+		slog.Error("Failed to unmarshal message", "error", err)
+		return
+	}
+
+	rsp := messageResponse{
 		Message: msg,
 	}
 
-	var predecessors map[string]data.Message
-	var success bool = false
-
-	// Propose message with max 3 retries
-	for i := 0; i < 3; i++ {
-		// Propose message to self
-		rsp, err := c.Propose(proposeReq)
-		if err != nil {
-			proposeReq.Message.Timestamp++
-			slog.Error("Failed to self propose message, retrying...", "error", err)
-			continue
-		}
-
-		predecessors = make(map[string]data.Message)
-		highestTimestamp := proposeReq.Message.Timestamp
-
-		for id, msg := range rsp.Predecessors {
-			if msg.Timestamp > highestTimestamp {
-				highestTimestamp = msg.Timestamp
-			}
-			predecessors[id] = msg
-		}
-
-		if !rsp.Ack {
-			proposeReq.Message.Timestamp = highestTimestamp + 1
-			slog.Warn("Failed to self propose message, retrying...", "message", proposeReq.Message.ID, "topic", proposeReq.Message.Topic, "timestamp", proposeReq.Message.Timestamp)
-			continue
-		}
-
-		quorum := len(c.nodes)/2 + 1
-		acks := 1
-		nacks := 0
-
-		type response struct {
-			proposeResponse models.ProposeResponse
-			err             error
-		}
-		responseChan := make(chan response, len(c.nodes))
-
-		// Propose message to all other nodes
-		for host, node := range c.nodes {
-			go func(host string, node Node) {
-				rsp, err := node.Propose(proposeReq)
-				if err != nil {
-					slog.Error("Failed to propose message", "node", host, "error", err)
-					responseChan <- response{
-						proposeResponse: models.ProposeResponse{},
-						err:             err,
-					}
-				}
-
-				responseChan <- response{
-					proposeResponse: rsp,
-				}
-
-			}(host, node)
-		}
-
-		// Wait for quorum
-		for rsp := range responseChan {
-			if rsp.err != nil {
-				quorum -= 1
-				continue
-			}
-
-			proposeRsp := rsp.proposeResponse
-
-			if proposeRsp.Ack {
-				acks++
-			} else {
-				nacks++
-			}
-
-			for id, msg := range proposeRsp.Predecessors {
-				if msg.Timestamp > highestTimestamp {
-					highestTimestamp = msg.Timestamp
-				}
-
-				if proposeRsp.Ack {
-					predecessors[id] = msg
-				}
-			}
-
-			if acks >= quorum || nacks >= quorum {
-				break
-			}
-		}
-
-		if acks < quorum {
-			proposeReq.Message.Timestamp = highestTimestamp + 1
-			slog.Warn("Failed to propose message to other nodes, retrying...", "message", proposeReq.Message.ID, "topic", proposeReq.Message.Topic, "timestamp", proposeReq.Message.Timestamp)
-			continue
-		}
-
-		success = true
-		break
+	_, err = c.broker.Publish(msg)
+	if err != nil {
+		rsp.Err = err
 	}
 
-	if !success {
-		return "", errors.New("failed to propose message")
+	c.mx.Lock()
+	if ch, ok := c.proposedMessages[msg.ID]; ok {
+		ch <- rsp
+		delete(c.proposedMessages, msg.ID)
+	}
+	c.mx.Unlock()
+}
+
+func (c *consensusService) Publish(msg data.Message) (string, error) {
+	if len(c.cfg.Nodes) == 0 {
+		return c.broker.Publish(msg)
 	}
 
-	// Prepare stable message request
-	msg.Body = body
-	stableReq := models.StableRequest{
-		Message:      msg,
-		Predecessors: predecessors,
-	}
+	msg.ID = uuid.NewString()
+	msg.Timestamp = time.Now().UnixMicro()
 
-	// Stable message to all other nodes
-	for host, node := range c.nodes {
-		go func(host string, node Node) {
-			err := node.Stable(stableReq)
-			if err != nil {
-				slog.Error("Failed to send stable message", "node", host, "error", err)
-			}
-		}(host, node)
-	}
-
-	// Stable message to self
-	err := c.Stable(stableReq)
+	message, err := json.Marshal(msg)
 	if err != nil {
 		return "", err
 	}
 
-	return msg.ID, nil
+	waitChan := make(chan messageResponse, 2)
+	c.mx.Lock()
+	c.proposedMessages[msg.ID] = waitChan
+	c.mx.Unlock()
+	c.conalg.Propose(message)
+
+	return wait(waitChan)
 }
 
-func (c *consensusService) Propose(req models.ProposeRequest) (models.ProposeResponse, error) {
-	slog.Debug("Receiving propose request", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
-
-	// Create topic if it does not exist
-	c.mu.Lock()
-	topic := c.topics[req.Message.Topic]
-	if topic == nil {
-		topic = NewTopic(req.Message.Topic)
-		c.topics[req.Message.Topic] = topic
+func wait(waitChan chan messageResponse) (string, error) {
+	select {
+	case msg := <-waitChan:
+		return msg.Message.ID, msg.Err
+	case <-time.After(5 * time.Second):
+		return "", errors.New("timeout waiting for consensus")
 	}
-	c.mu.Unlock()
-
-	// And add new message if not already stable
-	if ok := topic.UpsertMessage(req.Message, ProposedState, make(Messages)); !ok {
-		slog.Warn("Propose request already stable", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
-		return models.ProposeResponse{
-			Ack:          true,
-			Message:      req.Message,
-			Predecessors: make(Messages),
-		}, nil
-	}
-
-	// Get all ack messages, split into newer and older messages based on timestamp
-	ackMessages := topic.GetMessages(AckState)
-	newerMessages := make(map[string]data.Message)
-	olderMessages := make(map[string]data.Message)
-	for _, m := range ackMessages {
-		if m.Timestamp > req.Message.Timestamp {
-			newerMessages[m.ID] = m
-		} else {
-			olderMessages[m.ID] = m
-		}
-	}
-
-	// Wait for newer messages to be stable
-	ack := true
-	if len(newerMessages) > 0 {
-		predecessors := topic.WaitForStateUpdate(newerMessages, StableState)
-		if _, ok := predecessors[req.Message.ID]; !ok {
-			ack = false
-		}
-	}
-
-	if ack {
-		// Acknowledge message
-		ackMessages = olderMessages
-		topic.UpsertMessage(req.Message, AckState, ackMessages)
-		slog.Debug("Propose request acknowledged", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
-	} else {
-		// Nack message
-		topic.UpsertMessage(req.Message, NackState, ackMessages)
-		slog.Debug("Propose request not acknowledged", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
-	}
-
-	return models.ProposeResponse{
-		Ack:          ack,
-		Message:      req.Message,
-		Predecessors: ackMessages,
-	}, nil
-}
-
-func (c *consensusService) Stable(req models.StableRequest) error {
-	slog.Debug("Receiving stable request", "message", req.Message.ID, "topic", req.Message.Topic, "timestamp", req.Message.Timestamp)
-
-	// Create topic if it does not exist
-	c.mu.Lock()
-	topic := c.topics[req.Message.Topic]
-	if topic == nil {
-		topic = NewTopic(req.Message.Topic)
-		c.topics[req.Message.Topic] = topic
-	}
-	c.mu.Unlock()
-
-	// Update predecessors and state
-	topic.UpsertMessage(req.Message, StableState, req.Predecessors)
-
-	// Wait for predecessors to be published
-	topic.WaitForStateUpdate(req.Predecessors, PublishedState)
-
-	// Publish message to broker
-	topic.UpsertMessage(req.Message, PublishedState, req.Predecessors)
-	_, err := c.broker.Publish(req.Message)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
