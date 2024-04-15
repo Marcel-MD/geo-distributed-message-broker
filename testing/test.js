@@ -11,12 +11,12 @@ export const options = {
             preAllocatedVUs: 20,
             timeUnit: '1s',
             stages: [
+                { target: 50, duration: '30s' },
+                { target: 50, duration: '60s' },
                 { target: 100, duration: '30s' },
                 { target: 100, duration: '60s' },
                 { target: 200, duration: '30s' },
-                { target: 200, duration: '60s' },
-                { target: 300, duration: '30s' },
-                { target: 300, duration: '30s' },
+                { target: 200, duration: '30s' },
                 { target: 0, duration: '60s' },
             ]
         },
