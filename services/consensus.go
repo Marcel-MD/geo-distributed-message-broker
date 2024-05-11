@@ -9,8 +9,6 @@ import (
 	"sync"
 	"time"
 
-	anotherSlog "github.com/gookit/slog"
-
 	"github.com/google/uuid"
 	"github.com/madalv/conalg/caesar"
 )
@@ -30,7 +28,7 @@ func NewConsensusService(cfg config.Config, broker BrokerService) ConsensusServi
 		broker:           broker,
 	}
 
-	conalg := caesar.InitConalgModule(&srv, "", anotherSlog.InfoLevel, true)
+	conalg := caesar.InitConalgModule(&srv, "", slog.LevelInfo, true)
 	srv.conalg = conalg
 
 	return &srv
